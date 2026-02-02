@@ -18,8 +18,11 @@
             "type": "go",
             "request": "launch",
             "mode": "debug",
-            "program": "${workspaceFolder}/cmd/mremotego",
+            "program": "${workspaceFolder}/cmd/mremotego-gui",
             "args": ["list"],
+            "env": {
+                "CGO_ENABLED": "1"
+            },
             "console": "integratedTerminal"
         },
         {
@@ -35,8 +38,11 @@
             "type": "go",
             "request": "launch",
             "mode": "debug",
-            "program": "${workspaceFolder}/cmd/mremotego",
+            "program": "${workspaceFolder}/cmd/mremotego-gui",
             "args": [],
+            "env": {
+                "CGO_ENABLED": "1"
+            },
             "console": "integratedTerminal"
         }
     ]

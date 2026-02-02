@@ -1,52 +1,38 @@
 # Makefile for MremoteGO
 
-.PHONY: all build build-cli build-gui clean install test run help
+.PHONY: all build clean install test run help
 
-# Binary names
-CLI_BINARY=mremotego
-GUI_BINARY=mremotego-gui
-CLI_PATH=cmd/mremotego/main.go
-GUI_PATH=cmd/mremotego-gui/main.go cmd/mremotego-gui/theme.go
+# Binary name
+BINARY=mremotego
+BINARY_PATH=cmd/mremotego-gui/main.go cmd/mremotego-gui/theme.go
 
 # Build directory
 BUILD_DIR=bin
 
 all: clean build
 
-# Build both CLI and GUI
-build: build-cli build-gui
-
-# Build the CLI application
-build-cli:
-	@echo "Building $(CLI_BINARY)..."
-	@go build -o $(BUILD_DIR)/$(CLI_BINARY) $(CLI_PATH)
-	@echo "✓ CLI build complete: $(BUILD_DIR)/$(CLI_BINARY)"
-
-# Build the GUI application
-build-gui:
-	@echo "Building $(GUI_BINARY)..."
-	@go build -o $(BUILD_DIR)/$(GUI_BINARY) $(GUI_PATH)
-	@echo "✓ GUI build complete: $(BUILD_DIR)/$(GUI_BINARY)"
+# Build the application (handles both CLI and GUI)
+build:
+	@echo "Building $(BINARY)..."
+	@CGO_ENABLED=1 go build -o $(BUILD_DIR)/$(BINARY) $(BINARY_PATH)
+	@echo "✓ Build complete: $(BUILD_DIR)/$(BINARY)"
+	@echo "  Run GUI: $(BUILD_DIR)/$(BINARY)"
+	@echo "  Run CLI: $(BUILD_DIR)/$(BINARY) --help"
 
 # Build for multiple platforms
 build-all:
 	@echo "Building for multiple platforms..."
-	@GOOS=linux GOARCH=amd64 go build -o $(BUILD_DIR)/$(CLI_BINARY)-linux-amd64 $(CLI_PATH)
-	@GOOS=darwin GOARCH=amd64 go build -o $(BUILD_DIR)/$(CLI_BINARY)-darwin-amd64 $(CLI_PATH)
-	@GOOS=darwin GOARCH=arm64 go build -o $(BUILD_DIR)/$(CLI_BINARY)-darwin-arm64 $(CLI_PATH)
-	@GOOS=windows GOARCH=amd64 go build -o $(BUILD_DIR)/$(CLI_BINARY)-windows-amd64.exe $(CLI_PATH)
-	@echo "✓ CLI multi-platform build complete"
-	@echo "Building GUI for multiple platforms..."
-	@GOOS=linux GOARCH=amd64 go build -o $(BUILD_DIR)/$(GUI_BINARY)-linux-amd64 $(GUI_PATH)
-	@GOOS=darwin GOARCH=amd64 go build -o $(BUILD_DIR)/$(GUI_BINARY)-darwin-amd64 $(GUI_PATH)
-	@GOOS=darwin GOARCH=arm64 go build -o $(BUILD_DIR)/$(GUI_BINARY)-darwin-arm64 $(GUI_PATH)
-	@GOOS=windows GOARCH=amd64 go build -o $(BUILD_DIR)/$(GUI_BINARY)-windows-amd64.exe $(GUI_PATH)
-	@echo "✓ GUI multi-platform build complete"
+	@GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -o $(BUILD_DIR)/$(BINARY)-linux-amd64 $(BINARY_PATH)
+	@GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -o $(BUILD_DIR)/$(BINARY)-darwin-amd64 $(BINARY_PATH)
+	@GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -o $(BUILD_DIR)/$(BINARY)-darwin-arm64 $(BINARY_PATH)
+	@GOOS=windows GOARCH=amd64 CGO_ENABLED=1 go build -o $(BUILD_DIR)/$(BINARY)-windows-amd64.exe $(BINARY_PATH)
+	@echo "✓ Multi-platform build complete"
 
 # Clean build artifacts
 clean:
 	@echo "Cleaning..."
 	@rm -rf $(BUILD_DIR)
+	@rm -f $(BINARY) $(BINARY).exe
 	@echo "Clean complete"
 
 # Install to GOPATH/bin

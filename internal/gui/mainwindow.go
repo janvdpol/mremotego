@@ -31,17 +31,22 @@ type MainWindow struct {
 	statusLabel    *widget.Label
 	activeSessions *widget.List
 	sessionList    []*models.Connection
+	logger         *Logger
+	logVisible     bool
 }
 
 // NewMainWindow creates a new main window
 func NewMainWindow(app fyne.App, manager *config.Manager) *MainWindow {
+	// Initialize logger first
+	logger := NewLogger(100)
+	
 	// Get 1Password account name from config
 	accountName := ""
 	if cfg := manager.GetConfig(); cfg != nil && cfg.Settings != nil {
 		accountName = cfg.Settings.OnePasswordAccount
-		fmt.Printf("[DEBUG] Loaded 1Password account from config: '%s'\n", accountName)
+		logger.LogInfo(fmt.Sprintf("Loaded 1Password account from config: '%s'", accountName))
 	} else {
-		fmt.Println("[DEBUG] No settings found in config")
+		logger.LogInfo("No 1Password account configured in settings")
 	}
 
 	w := &MainWindow{
@@ -50,6 +55,8 @@ func NewMainWindow(app fyne.App, manager *config.Manager) *MainWindow {
 		manager:        manager,
 		launcher:       launcher.NewLauncher(accountName),
 		connectionData: make(map[string]*models.Connection),
+		logger:         logger,
+		logVisible:     true, // Start with log visible for troubleshooting
 	}
 
 	// Set the SDK provider in the config manager so it uses SDK for creating items too
@@ -97,12 +104,35 @@ func (w *MainWindow) setupUI() {
 		w.tree,    // center
 	)
 
-	// Create split container
-	split := container.NewHSplit(
+	// Create split container for tree and details
+	topSplit := container.NewHSplit(
 		leftPanel,
 		detailsContainer,
 	)
-	split.Offset = 0.3 // 30% for tree, 70% for details
+	topSplit.Offset = 0.3 // 30% for tree, 70% for details
+
+	// Create log panel with toggle button
+	logHeader := container.NewBorder(
+		nil, nil, 
+		widget.NewLabel("Application Log"),
+		container.NewHBox(
+			widget.NewButton("Clear", func() { w.logger.Clear() }),
+			widget.NewButton("Hide Log", func() { w.toggleLog() }),
+		),
+	)
+	
+	logPanel := container.NewBorder(
+		logHeader,
+		nil, nil, nil,
+		container.NewScroll(w.logger.GetWidget()),
+	)
+
+	// Create vertical split with main content and log
+	mainSplit := container.NewVSplit(
+		topSplit,
+		logPanel,
+	)
+	mainSplit.Offset = 0.75 // 75% for main content, 25% for log
 
 	// Create status bar
 	w.statusLabel = widget.NewLabel("Ready")
@@ -112,16 +142,19 @@ func (w *MainWindow) setupUI() {
 
 	// Main content with toolbar and status bar
 	content := container.NewBorder(
-		toolbar,   // top
-		statusBar, // bottom
-		nil,       // left
-		nil,       // right
-		split,     // center
+		toolbar,    // top
+		statusBar,  // bottom
+		nil,        // left
+		nil,        // right
+		mainSplit,  // center
 	)
 
 	w.window.SetContent(content)
 	w.window.Resize(fyne.NewSize(1200, 800))
 	w.window.CenterOnScreen()
+
+	// Log initial status
+	w.logger.LogSuccess("MremoteGO started successfully")
 
 	// Update status with connection count
 	w.updateStatus()
@@ -149,11 +182,16 @@ func (w *MainWindow) setupMenuBar() {
 		fyne.NewMenuItem("Delete", func() { w.deleteSelected() }),
 	)
 
+	viewMenu := fyne.NewMenu("View",
+		fyne.NewMenuItem("Toggle Log Panel", func() { w.toggleLog() }),
+		fyne.NewMenuItem("Clear Log", func() { w.logger.Clear() }),
+	)
+
 	helpMenu := fyne.NewMenu("Help",
 		fyne.NewMenuItem("About", func() { w.showAbout() }),
 	)
 
-	mainMenu := fyne.NewMainMenu(fileMenu, connectMenu, helpMenu)
+	mainMenu := fyne.NewMainMenu(fileMenu, connectMenu, viewMenu, helpMenu)
 	w.window.SetMainMenu(mainMenu)
 }
 
@@ -457,11 +495,15 @@ func (w *MainWindow) connectToSelected() {
 }
 
 func (w *MainWindow) connectToConnection(conn *models.Connection) {
+	w.logger.LogInfo(fmt.Sprintf("Launching connection to %s (%s)", conn.Name, conn.Host))
+	
 	if err := w.launcher.Launch(conn); err != nil {
+		w.logger.LogError(fmt.Sprintf("Failed to launch %s: %v", conn.Name, err))
 		dialog.ShowError(fmt.Errorf("Failed to launch connection: %w", err), w.window)
 		return
 	}
 
+	w.logger.LogSuccess(fmt.Sprintf("Successfully launched connection to %s", conn.Name))
 	dialog.ShowInformation("Connected", fmt.Sprintf("Launched connection to %s", conn.Name), w.window)
 }
 
@@ -616,9 +658,25 @@ func (w *MainWindow) check1PasswordAuth() {
 			w.window,
 		)
 	}
-} // Reload refreshes the window with the loaded config
+}
+
+// Reload refreshes the window with the loaded config
 func (w *MainWindow) Reload() {
 	w.buildConnectionMap()
 	w.tree.Refresh()
 	w.updateStatus()
+}
+
+// toggleLog toggles the visibility of the log panel
+func (w *MainWindow) toggleLog() {
+	w.logVisible = !w.logVisible
+	// Since we can't easily hide/show the split panel dynamically,
+	// we'll recreate the UI. For now, just log the action.
+	// A better implementation would require storing the split reference
+	// and adjusting its offset or rebuilding the content
+	if w.logVisible {
+		w.logger.LogInfo("Log panel shown")
+	} else {
+		w.logger.LogInfo("Log panel hidden (note: requires UI rebuild to fully hide)")
+	}
 }

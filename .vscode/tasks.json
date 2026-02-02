@@ -2,33 +2,13 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build CLI",
+            "label": "Build",
             "type": "shell",
             "command": "go",
             "args": [
                 "build",
                 "-o",
                 "mremotego.exe",
-                "./cmd/mremotego"
-            ],
-            "group": {
-                "kind": "build",
-                "isDefault": false
-            },
-            "presentation": {
-                "reveal": "always",
-                "panel": "new"
-            },
-            "problemMatcher": ["$go"]
-        },
-        {
-            "label": "Build GUI",
-            "type": "shell",
-            "command": "go",
-            "args": [
-                "build",
-                "-o",
-                "mremotego-gui.exe",
                 "./cmd/mremotego-gui"
             ],
             "options": {
@@ -47,17 +27,11 @@
             "problemMatcher": ["$go"]
         },
         {
-            "label": "Build All",
-            "dependsOn": ["Build CLI", "Build GUI"],
-            "group": "build",
-            "problemMatcher": []
-        },
-        {
             "label": "Run CLI",
             "type": "shell",
             "command": ".\\mremotego.exe",
             "args": ["list"],
-            "dependsOn": ["Build CLI"],
+            "dependsOn": ["Build"],
             "group": "test",
             "presentation": {
                 "reveal": "always",
@@ -67,8 +41,8 @@
         {
             "label": "Run GUI",
             "type": "shell",
-            "command": ".\\mremotego-gui.exe",
-            "dependsOn": ["Build GUI"],
+            "command": ".\\mremotego.exe",
+            "dependsOn": ["Build"],
             "group": "test",
             "presentation": {
                 "reveal": "always",
