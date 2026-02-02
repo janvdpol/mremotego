@@ -39,7 +39,7 @@ type MainWindow struct {
 func NewMainWindow(app fyne.App, manager *config.Manager) *MainWindow {
 	// Initialize logger first
 	logger := NewLogger(100)
-	
+
 	// Get 1Password account name from config
 	accountName := ""
 	if cfg := manager.GetConfig(); cfg != nil && cfg.Settings != nil {
@@ -113,14 +113,14 @@ func (w *MainWindow) setupUI() {
 
 	// Create log panel with toggle button
 	logHeader := container.NewBorder(
-		nil, nil, 
+		nil, nil,
 		widget.NewLabel("Application Log"),
 		container.NewHBox(
 			widget.NewButton("Clear", func() { w.logger.Clear() }),
 			widget.NewButton("Hide Log", func() { w.toggleLog() }),
 		),
 	)
-	
+
 	logPanel := container.NewBorder(
 		logHeader,
 		nil, nil, nil,
@@ -142,11 +142,11 @@ func (w *MainWindow) setupUI() {
 
 	// Main content with toolbar and status bar
 	content := container.NewBorder(
-		toolbar,    // top
-		statusBar,  // bottom
-		nil,        // left
-		nil,        // right
-		mainSplit,  // center
+		toolbar,   // top
+		statusBar, // bottom
+		nil,       // left
+		nil,       // right
+		mainSplit, // center
 	)
 
 	w.window.SetContent(content)
@@ -496,7 +496,7 @@ func (w *MainWindow) connectToSelected() {
 
 func (w *MainWindow) connectToConnection(conn *models.Connection) {
 	w.logger.LogInfo(fmt.Sprintf("Launching connection to %s (%s)", conn.Name, conn.Host))
-	
+
 	if err := w.launcher.Launch(conn); err != nil {
 		w.logger.LogError(fmt.Sprintf("Failed to launch %s: %v", conn.Name, err))
 		dialog.ShowError(fmt.Errorf("Failed to launch connection: %w", err), w.window)
@@ -504,7 +504,6 @@ func (w *MainWindow) connectToConnection(conn *models.Connection) {
 	}
 
 	w.logger.LogSuccess(fmt.Sprintf("Successfully launched connection to %s", conn.Name))
-	dialog.ShowInformation("Connected", fmt.Sprintf("Launched connection to %s", conn.Name), w.window)
 }
 
 func (w *MainWindow) editSelected() {
