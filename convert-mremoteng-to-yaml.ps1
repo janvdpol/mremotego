@@ -1,7 +1,26 @@
 # Convert mRemoteNG XML to MremoteGO YAML format
+# 
+# This script helps migrate your mRemoteNG connections to MremoteGO's YAML format.
+# It preserves folder structure and converts connections to the git-friendly format.
+#
+# Usage:
+#   .\convert-mremoteng-to-yaml.ps1 -SourceXml "confCons.xml" -OutputYaml "connections.yaml"
+#
+# After conversion:
+#   1. Review the generated YAML file
+#   2. Replace passwords with 1Password references: op://Vault/Item/password
+#   3. Or use encrypted passwords with: mremotego encrypt-passwords
+#   4. Configure 1Password settings in config.yaml if using 1Password integration
+#
 param(
-    [string]$SourceXml = "Devops-Mremote Config.xml",
-    [string]$OutputYaml = "connections.yaml"
+    [Parameter(Mandatory=$false)]
+    [string]$SourceXml = "confCons.xml",
+    
+    [Parameter(Mandatory=$false)]
+    [string]$OutputYaml = "connections.yaml",
+    
+    [Parameter(Mandatory=$false)]
+    [switch]$Include1PasswordTemplate = $false
 )
 
 function Convert-ProtocolToMremoteGO {
@@ -31,7 +50,9 @@ function Convert-ConnectionNode {
     if ($node.Type -eq "Container") {
         $yaml += "$spaces  type: folder`n"
         if ($node.Descr) {
-            $yaml += "$spaces  description: `"$($node.Descr)`"`n"
+            $cleanDescr = $node.Descr -replace '[\r\n]+', ' '
+            $cleanDescr = $cleanDescr.Trim()
+            $yaml += "$spaces  description: `"$cleanDescr`"`n"
         }
         
         # Process children
@@ -65,10 +86,16 @@ function Convert-ConnectionNode {
             $yaml += "$spaces  username: `"$($node.Username)`"`n"
         }
         
-        # Password - skipped, use 1Password or set manually
-        # if ($node.Password) {
-        #     $yaml += "$spaces  password: `"`"`n"
-        # }
+        # Password - placeholder for 1Password or encrypted
+        if ($node.Password -and $node.Password -ne "") {
+            if ($Include1PasswordTemplate) {
+                # Add 1Password template
+                $yaml += "$spaces  password: `"op://Private/$cleanName/password`"  # TODO: Update vault and item names`n"
+            } else {
+                # Add placeholder for manual entry
+                $yaml += "$spaces  password: `"`"  # TODO: Set password or use 1Password reference`n"
+            }
+        }
         
         # Domain
         if ($node.Domain) {
@@ -83,6 +110,10 @@ function Convert-ConnectionNode {
             $yaml += "$spaces  description: `"$cleanDescr`"`n"
         }
         
+        # Tags (optional - you can add custom logic here)
+        # $yaml += "$spaces  tags:`n"
+        # $yaml += "$spaces    - imported`n"
+        
         # RDP specific settings
         if ($protocol -eq "rdp") {
             if ($node.UseCredSsp -eq "true") {
@@ -91,6 +122,14 @@ function Convert-ConnectionNode {
             if ($node.Resolution) {
                 $yaml += "$spaces  resolution: `"$($node.Resolution)`"`n"
             }
+            if ($node.Colors) {
+                $yaml += "$spaces  colors: `"$($node.Colors)`"`n"
+            }
+        }
+        
+        # SSH specific settings
+        if ($protocol -eq "ssh") {
+            # Add any SSH-specific settings here if needed
         }
     }
     
@@ -98,26 +137,66 @@ function Convert-ConnectionNode {
 }
 
 # Load the XML
+Write-Host "Loading mRemoteNG XML from: $SourceXml" -ForegroundColor Cyan
+
+if (-not (Test-Path $SourceXml)) {
+    Write-Host "ERROR: Source file not found: $SourceXml" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Usage: .\convert-mremoteng-to-yaml.ps1 -SourceXml `"your-mremoteng-config.xml`"" -ForegroundColor Yellow
+    exit 1
+}
+
 [xml]$xml = Get-Content $SourceXml
 
-# Get all connection nodes
-$connections = $xml.SelectNodes("//Node[@Type='Connection']")
+# Get root node
+$rootNode = $xml.SelectSingleNode("//mrng:Connections | //Connections", $null)
+if (-not $rootNode) {
+    Write-Host "ERROR: Could not find Connections root node in XML" -ForegroundColor Red
+    exit 1
+}
 
-Write-Host "Found $($connections.Count) connections"
+# Get all top-level nodes (folders and connections)
+$topLevelNodes = $rootNode.SelectNodes("Node")
+
+Write-Host "Found $($topLevelNodes.Count) top-level items (folders and connections)" -ForegroundColor Green
+Write-Host ""
 
 # Start building YAML
-$yaml = "version: `"1.0`"`n"
+$yaml = "# MremoteGO Configuration File`n"
+$yaml += "# Generated from mRemoteNG XML: $SourceXml`n"
+$yaml += "# Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n"
+$yaml += "#`n"
+$yaml += "# Next steps:`n"
+$yaml += "#   1. Review this file and update passwords`n"
+$yaml += "#   2. Use 1Password references: op://VaultName/ItemName/password`n"
+$yaml += "#   3. Or encrypt passwords: mremotego encrypt-passwords`n"
+$yaml += "#   4. Configure settings in config.yaml`n"
+$yaml += "`n"
+$yaml += "version: `"1.0`"`n"
 $yaml += "connections:`n"
 
-# Convert each connection
-foreach ($conn in $connections) {
-    $yaml += Convert-ConnectionNode -node $conn -indent 1
+# Convert each top-level node
+foreach ($node in $topLevelNodes) {
+    $yaml += Convert-ConnectionNode -node $node -indent 1
 }
 
 # Save to file
-$yaml | Out-File -FilePath $OutputYaml -Encoding UTF8
+$yaml | Out-File -FilePath $OutputYaml -Encoding UTF8 -NoNewline
 
-Write-Host "Converted to YAML: $OutputYaml"
+Write-Host "✓ Successfully converted to YAML: $OutputYaml" -ForegroundColor Green
 Write-Host ""
-Write-Host "NOTE: Passwords are encrypted in mRemoteNG format and need to be decrypted."
-Write-Host "You'll need to manually set passwords or use 1Password integration."
+Write-Host "IMPORTANT NOTES:" -ForegroundColor Yellow
+Write-Host "  • Passwords are NOT migrated from mRemoteNG (encrypted format incompatible)" -ForegroundColor Yellow
+Write-Host "  • You need to:" -ForegroundColor Yellow
+Write-Host "    1. Manually set passwords in YAML" -ForegroundColor White
+Write-Host "    2. Use 1Password integration (recommended)" -ForegroundColor White
+Write-Host "       Example: password: `"op://DevOps/ServerName/password`"" -ForegroundColor Gray
+Write-Host "    3. Or use MremoteGO's encryption" -ForegroundColor White
+Write-Host ""
+Write-Host "1Password Setup:" -ForegroundColor Cyan
+Write-Host "  • See docs/1PASSWORD-SETUP.md for configuration guide" -ForegroundColor White
+Write-Host "  • Configure account in config.yaml settings.onePasswordAccount" -ForegroundColor White
+Write-Host "  • Use vault name mappings for easier references" -ForegroundColor White
+Write-Host ""
+Write-Host "Next Command:" -ForegroundColor Cyan
+Write-Host "  mremotego.exe  # Launch GUI and review connections" -ForegroundColor White

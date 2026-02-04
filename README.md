@@ -1,6 +1,6 @@
 # MremoteGO
 
-> A modern, cross-platform remote connection manager with git-friendly YAML configs and 1Password integration.
+> A modern, cross-platform alternative to mRemoteNG with git-friendly YAML configs, 1Password integration, and biometric authentication support.
 
 [![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -8,24 +8,38 @@
 
 ## Why MremoteGO?
 
-**The Problem**: mRemoteNG uses XML configs that are painful to diff, merge, and share with teams. Passwords are awkwardly encrypted per-machine.
+**The Problem with mRemoteNG**: XML configuration files are difficult to diff, merge, and manage in version control. Passwords require per-machine encryption, making team collaboration painful.
 
-**The Solution**: MremoteGO uses clean YAML configs that work beautifully with git, plus optional 1Password integration for secure team password sharing.
+**MremoteGO Solution**: Clean YAML configuration files that work seamlessly with git, plus native 1Password integration with biometric unlock for secure, hassle-free password management across your team.
 
-## ✨ Features
+## ✨ Key Features
 
 - 🎨 **Modern GUI** - Clean interface with connection tree, search, and quick actions
-- 🔐 **Password Encryption** - AES-256-GCM encryption at rest with master password
-- 🔑 **1Password Integration** - Native SDK with biometric auth OR CLI fallback
-- 🗂️ **Vault Name Mapping** - Use friendly names for 1Password vaults in your config
-- 📝 **Git-Friendly** - YAML configs are easy to diff, merge, and review
-- 🖥️ **Cross-Platform** - Windows, Linux, macOS (AMD64 & ARM64)
-- ⚡ **Fast** - Native GUI with instant connections
-- 🚀 **Multiple Protocols** - SSH, RDP, VNC, HTTP/HTTPS, Telnet
-- 📁 **Organized** - Folders and search filtering
-- 🔒 **Auto-Login** - Password injection for SSH connections
-- 💻 **CLI & GUI** - Run without arguments for GUI, with arguments for CLI mode
-- 🧪 **Well-Tested** - Comprehensive test suite with 35+ unit tests
+- 🔐 **Secure Password Encryption** - AES-256-GCM encryption at rest with master password
+- 🔑 **1Password Integration** - Native SDK with biometric authentication OR CLI fallback for teams
+- 🗂️ **1Password Vault Mapping** - Use friendly vault names instead of cryptic UUIDs
+- 📝 **Git-Friendly YAML** - Diffs, merges, and pull requests that actually make sense
+- 🖥️ **Cross-Platform** - Windows, Linux (AMD64/ARM64), macOS (Intel/Apple Silicon)
+- ⚡ **Fast Native Performance** - Built with Go and Fyne for instant connections
+- 🚀 **Multi-Protocol Support** - SSH, RDP, VNC, HTTP/HTTPS, Telnet
+- 📁 **Folder Organization** - Tree structure with search filtering
+- 🔒 **SSH Auto-Login** - Automatic password injection for SSH connections
+- 💻 **Dual Mode** - GUI (no arguments) or CLI commands for automation
+- 🧪 **Well-Tested** - 35+ unit tests covering CLI commands, models, and config management
+
+## 🔑 1Password + mRemoteNG Migration
+
+**Looking to migrate from mRemoteNG to 1Password?** MremoteGO makes it easy:
+
+1. **Import your mRemoteNG connections** using the YAML config format
+2. **Replace passwords with 1Password references** like `op://Private/Server/password`
+3. **Enable 1Password SDK or CLI** in your settings
+4. **Unlock with biometrics** - Touch ID, Windows Hello, or your 1Password master password
+5. **Share with your team** - Git-friendly YAML configs + 1Password shared vaults
+
+No more per-machine password encryption headaches. Your team gets secure, centralized password management with mRemoteNG-style organization.
+
+See [docs/1PASSWORD-SETUP.md](docs/1PASSWORD-SETUP.md) for complete integration guide.
 
 ## 🚀 Quick Start
 
@@ -33,7 +47,11 @@
 
 Download the latest release for your platform from the [Releases](https://github.com/jaydenthorup/mremotego/releases) page.
 
+**Windows, Linux, and macOS builds available** - including ARM64 support for Apple Silicon and Linux ARM.
+
 ### Build from Source
+
+**Prerequisites**: Go 1.23+, CGO-enabled compiler (GCC on Linux, Xcode Command Line Tools on macOS, MinGW-w64 on Windows)
 
 ```bash
 # Clone the repository
@@ -372,6 +390,75 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 
 **Want to contribute?** Pick an item from the roadmap and open an issue or PR!
+
+---
+
+## 🔍 Frequently Asked Questions
+
+### How is MremoteGO different from mRemoteNG?
+
+MremoteGO is a modern alternative to mRemoteNG built from the ground up in Go. Key differences:
+
+- **Configuration Format**: YAML instead of XML - easier to read, diff, and merge in git
+- **1Password Integration**: Native support for 1Password SDK with biometric authentication
+- **Cross-Platform**: Native builds for Windows, Linux (AMD64/ARM64), and macOS (Intel/Apple Silicon)
+- **Modern Stack**: Built with Go and Fyne for better performance and maintainability
+- **Git-Friendly**: YAML configs work seamlessly with version control and team collaboration
+- **Dual Mode**: Single executable works as both GUI and CLI
+
+### Can I migrate from mRemoteNG to MremoteGO?
+
+Yes! MremoteGO uses a YAML format that's easy to populate from mRemoteNG XML exports. You can:
+
+1. Export your mRemoteNG connections to XML
+2. Manually convert to YAML format (see example configs in [docs/](docs/))
+3. Use 1Password references to replace embedded passwords
+4. Import into MremoteGO and start using immediately
+
+A migration tool is on the roadmap to automate this process.
+
+### Does MremoteGO work with 1Password teams/business accounts?
+
+Yes! MremoteGO supports both individual and team 1Password accounts. Use shared vaults for team password management with the vault name mapping feature to reference vaults by friendly names instead of UUIDs.
+
+### What protocols does MremoteGO support?
+
+Currently supported:
+- SSH (with password auto-injection)
+- RDP (Remote Desktop Protocol)
+- VNC (Virtual Network Computing)
+- HTTP/HTTPS (opens in browser)
+- Telnet
+
+More protocols are planned for future releases.
+
+### Is MremoteGO secure for storing passwords?
+
+Yes! MremoteGO offers multiple secure storage options:
+
+- **1Password integration** (most secure for teams): Passwords stored in 1Password vaults with biometric unlock
+- **AES-256-GCM encryption** (secure for local use): Master password-protected with PBKDF2 key derivation (100,000 iterations)
+- Plain text passwords should only be used for testing and never committed to git
+
+See the [Security](#-security) section for best practices.
+
+### Can I use MremoteGO in automation/CI pipelines?
+
+Absolutely! MremoteGO includes a full CLI mode. Run with command-line arguments to list, connect, add, edit, delete, or export connections. Perfect for automation scripts, CI/CD pipelines, and infrastructure-as-code workflows.
+
+### What's required to build from source?
+
+- Go 1.23 or later
+- CGO-enabled compiler (GCC on Linux, Xcode on macOS, MinGW-w64 on Windows)
+- Platform-specific GUI dependencies (see [Development](#-development) section)
+
+Pre-built binaries are available on the [Releases](https://github.com/jaydenthorup/mremotego/releases) page if you don't want to build from source.
+
+---
+
+## 📝 Keywords for Search
+
+**mRemoteNG alternative**, **remote connection manager**, **1Password integration**, **SSH connection manager**, **RDP manager**, **git-friendly remote connections**, **YAML connection config**, **biometric authentication remote desktop**, **cross-platform connection manager**, **mRemoteNG YAML**, **mRemoteNG 1Password**, **secure password manager for SSH/RDP**, **team password sharing**, **remote desktop manager Linux**, **remote desktop manager macOS**, **connection manager with encryption**
 
 ---
 
