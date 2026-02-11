@@ -7,6 +7,18 @@ if (!(Test-Path -Path "bin")) {
     New-Item -ItemType Directory -Path "bin" | Out-Null
 }
 
+# Setup go-gl workaround if needed
+if (!(Select-String -Path "go.mod" -Pattern "^replace github.com/go-gl/gl" -Quiet)) {
+    Write-Host "Setting up go-gl workaround..." -ForegroundColor Yellow
+    if (!(Test-Path "go-gl-temp")) {
+        git clone --depth 1 https://github.com/go-gl/gl.git go-gl-temp
+    }
+    Add-Content -Path "go.mod" -Value ""
+    Add-Content -Path "go.mod" -Value "replace github.com/go-gl/gl => ./go-gl-temp"
+    go mod tidy
+    Write-Host "✓ go-gl workaround configured" -ForegroundColor Green
+}
+
 # Enable CGO (required for Fyne GUI and 1Password SDK)
 $env:CGO_ENABLED = "1"
 
