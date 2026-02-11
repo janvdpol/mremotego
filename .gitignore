@@ -36,6 +36,9 @@ Thumbs.db
 # Build output
 bin/
 dist/
+build-output.txt
+error.txt
+*.log
 
 # Local config files with passwords/connections (should not be committed)
 connections.yaml
