@@ -53,6 +53,13 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev
 
+    - name: Setup go-gl workaround
+      run: |
+        git clone https://github.com/go-gl/gl.git go-gl-temp
+        echo "" >> go.mod
+        echo "replace github.com/go-gl/gl => ./go-gl-temp" >> go.mod
+        go mod tidy
+
     - name: Build (Windows)
       if: matrix.os == 'windows-latest'
       env:
