@@ -15,18 +15,18 @@ This allows you to:
 
 ### Prerequisites
 
-- 1Password desktop app **BETA version** (required for SDK support)
+- 1Password desktop app **NIGHTLY version** (required for SDK support)
 - Download from: https://releases.1password.com/
 
 ### 1. Install 1Password Desktop App
 
-Download and install the BETA version of the 1Password desktop app.
+Download and install the NIGHTLY version of the 1Password desktop app.
 
 ### 2. Enable SDK Integration
 
 1. Open **1Password desktop app**
 2. Go to **Settings → Developer**
-3. Enable **"Integrate with the 1Password SDKs"**
+3. Under  **"Integrate with the 1Password SDKs"**
 4. Enable **"Integrate with other apps"**
 
 ### 3. Configure MremoteGO
