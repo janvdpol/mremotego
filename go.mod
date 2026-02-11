@@ -4,6 +4,7 @@ go 1.24.0
 
 require (
 	fyne.io/fyne/v2 v2.7.2
+	github.com/1password/onepassword-sdk-go v0.4.0-beta.2
 	github.com/spf13/cobra v1.8.0
 	golang.org/x/crypto v0.47.0
 	golang.org/x/term v0.39.0
@@ -12,7 +13,6 @@ require (
 
 require (
 	fyne.io/systray v1.12.0 // indirect
-	github.com/1password/onepassword-sdk-go v0.4.0-beta.2 // indirect
 	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dylibso/observe-sdk/go v0.0.0-20240819160327-2d926c5d788a // indirect
