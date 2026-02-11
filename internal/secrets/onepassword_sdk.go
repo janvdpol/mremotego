@@ -18,7 +18,7 @@ type OnePasswordSDKProvider struct {
 	accountName  string
 	enabled      bool
 	vaults       []VaultInfo          // Stores vault ID and title (title may be [Encrypted] until auth)
-	vaultNameMap map[string]string    // Maps vault IDs to friendly names from config
+	vaultNameMap map[string]string    // Fallback mapping for encrypted vault names (SDK v0.4.1+ decrypts automatically)
 	cliProvider  *OnePasswordProvider // Fallback to CLI if SDK not available
 }
 
@@ -498,33 +498,36 @@ func (p *OnePasswordSDKProvider) ListVaults() ([]string, error) {
 }
 
 // GetVaults returns vault information (ID and title)
-// Note: Titles may be [Encrypted] until biometric authentication occurs
-// If vault name mappings are configured, they will be used instead of encrypted titles
+// With SDK v0.4.1-beta.1+: Vault names are decrypted after biometric authentication
+// Manual vault name mappings are used only as fallback for encrypted names
 func (p *OnePasswordSDKProvider) GetVaults() []VaultInfo {
 	if !p.enabled {
 		return []VaultInfo{}
 	}
 
-	// If we have vault name mappings, use them to provide friendly names
-	if len(p.vaultNameMap) > 0 {
-		vaults := make([]VaultInfo, 0, len(p.vaults))
-		for _, v := range p.vaults {
-			title := v.Title
+	// Prefer SDK-provided decrypted names, use manual mapping only for encrypted names
+	vaults := make([]VaultInfo, 0, len(p.vaults))
+	for _, v := range p.vaults {
+		title := v.Title
+
+		// If vault name is still encrypted, try to use manual mapping
+		if title == "[Encrypted]" && len(p.vaultNameMap) > 0 {
 			if friendlyName, ok := p.vaultNameMap[v.ID]; ok {
 				title = friendlyName
 			}
-			vaults = append(vaults, VaultInfo{
-				ID:    v.ID,
-				Title: title,
-			})
 		}
-		return vaults
-	}
 
-	return p.vaults
+		vaults = append(vaults, VaultInfo{
+			ID:    v.ID,
+			Title: title,
+		})
+	}
+	return vaults
 }
 
 // SetVaultNameMap sets the vault ID to friendly name mapping from config
+// Note: With SDK v0.4.1-beta.1+, manual mapping is only needed as fallback for encrypted names
+// The SDK now provides decrypted vault names after biometric authentication
 func (p *OnePasswordSDKProvider) SetVaultNameMap(nameMap map[string]string) {
 	p.vaultNameMap = nameMap
 }
