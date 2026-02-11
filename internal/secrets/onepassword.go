@@ -144,7 +144,7 @@ func (p *OnePasswordProvider) parseReference(reference string) (string, string, 
 // ResolveIfReference resolves a value if it's a 1Password reference, otherwise returns it as-is
 // ResolveIfReference resolves a value if it's a 1Password reference, otherwise returns it as-is
 // Note: This uses the 1Password CLI which will prompt for biometric auth if needed
-// TODO: Consider migrating to https://github.com/1Password/onepassword-sdk-go for better integration
+// Note: Migrated to 1Password SDK - see onepassword_sdk.go for the SDK implementation
 func (p *OnePasswordProvider) ResolveIfReference(value string) string {
 	if !p.IsReference(value) {
 		return value

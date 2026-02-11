@@ -11,6 +11,11 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
+// IMPORTANT: Local Windows build workaround - DO NOT COMMIT
+// If builds fail with go-gl errors, uncomment the line below:
+// replace github.com/go-gl/gl => C:/temp/go-gl-temp
+// GitHub Actions doesn't need this workaround
+
 require (
 	fyne.io/systray v1.12.0 // indirect
 	github.com/BurntSushi/toml v1.5.0 // indirect

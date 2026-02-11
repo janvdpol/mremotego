@@ -231,7 +231,7 @@ func (w *MainWindow) showAddConnectionDialog() {
 				}
 				// Replace password with 1Password reference
 				conn.Password = reference
-				dialog.ShowInformation("Success", fmt.Sprintf("Password stored in 1Password vault"), w.window)
+				dialog.ShowInformation("Success", "Password stored in 1Password vault", w.window)
 			}
 
 			// Add to selected folder or root
@@ -438,7 +438,7 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 				}
 				// Replace password with 1Password reference
 				conn.Password = reference
-				dialog.ShowInformation("Success", fmt.Sprintf("Password stored in 1Password vault"), w.window)
+				dialog.ShowInformation("Success", "Password stored in 1Password vault", w.window)
 			} else {
 				conn.Password = passwordEntry.Text
 			}
