@@ -36,7 +36,9 @@ In your `config.yaml`:
 ```yaml
 settings:
   onePasswordAccount: "your-account-name"
-  vaultNameMappings:
+  # Vault name mappings are OPTIONAL with SDK v0.4.1-beta.1+
+  # The SDK now automatically decrypts vault names after biometric auth!
+  vaultNameMappings:  # Only needed if you prefer custom names
     Personal: "uuid-of-personal-vault"
     Work: "uuid-of-work-vault"
 ```
@@ -45,10 +47,11 @@ settings:
 - Look at the top of the sidebar in the 1Password desktop app
 - Example: "My Personal Account" or "work.1password.com"
 
-**Vault name mappings (optional but recommended):**
-- Maps friendly names to vault UUIDs
-- Use `Personal` instead of long UUID in references
-- Get vault IDs from the authentication instructions dialog
+**Vault name mappings (optional):**
+- 🆕 **NEW in v0.4.1-beta.1+**: Vault names automatically decrypt after biometric authentication!
+- Manual mappings only needed if you prefer custom vault names
+- SDK shows real vault names like "DevOps", "Private", "Employee" automatically
+- Fallback: If names stay encrypted, manual mappings will be used
 
 ### 4. Verify Setup
 
@@ -62,6 +65,7 @@ Launch MremoteGO - it will show connection status:
 - ⚡ **Faster** - Direct integration, no CLI process spawning
 - 🛡️ **More secure** - Session management handled by 1Password
 - 💎 **Better UX** - Seamless authentication flow
+- 🆕 **Auto-decrypted vault names** (v0.4.1-beta.1+) - No manual vault mapping needed!
 
 ## 🔷 Option 2: CLI Fallback
 
@@ -143,14 +147,16 @@ Reference format: `op://vault-name/item-name/field-name`
 
 ### Using Vault Name Mappings
 
-With vault name mappings, you can use friendly names instead of UUIDs:
+🆕 **With SDK v0.4.1-beta.1+**, vault names are automatically decrypted after biometric authentication! You can use real vault names directly:
 
-**Without mappings:**
+**Automatic (Recommended with SDK v0.4.1-beta.1+):**
 ```yaml
-password: op://abcd-1234-efgh-5678/Production Server/password
+# SDK automatically shows and uses real vault names
+password: op://DevOps/Production Server/password
+password: op://Private/My SSH Key/password
 ```
 
-**With mappings:**
+**Manual Mapping (Optional - for custom names or older SDK versions):**
 ```yaml
 # In config.yaml
 settings:
@@ -163,9 +169,9 @@ password: op://Work/Production Server/password
 
 ### Common Vaults
 
-- `Private` or `Personal` - Your personal vault
-- `Shared` - Team shared vault  
-- `Work` or `DevOps` - Custom team vault (configure in mappings)
+- `Private` or `Personal` - Your personal vault (auto-decrypted with SDK v0.4.1-beta.1+)
+- `Shared` - Team shared vault (auto-decrypted with SDK v0.4.1-beta.1+)
+- `DevOps`, `Employee`, etc. - Custom team vaults (auto-decrypted with SDK v0.4.1-beta.1+)
 
 ## How It Works
 
@@ -179,7 +185,8 @@ password: op://Work/Production Server/password
                     ↓
 ┌─────────────────────────────────────────────────┐
 │ 2. MremoteGO calls 1Password SDK               │
-│    Maps "Work" → vault UUID using config       │
+│    Uses vault name directly (v0.4.1-beta.1+)   │
+│    or maps via config if custom name provided  │
 └─────────────────────────────────────────────────┘
                     ↓
 ┌─────────────────────────────────────────────────┐
