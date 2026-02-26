@@ -59,6 +59,11 @@ func NewMainWindow(app fyne.App, manager *config.Manager) *MainWindow {
 		logVisible:     true, // Start with log visible for troubleshooting
 	}
 
+	// Set up credential provider callback for prompting user when 1Password fails
+	w.launcher.SetCredentialProvider(func(conn *models.Connection, needUsername, needPassword bool) (string, string, error) {
+		return w.showCredentialPrompt(conn, needUsername, needPassword)
+	})
+
 	// Set the SDK provider in the config manager so it uses SDK for creating items too
 	if accountName != "" {
 		manager.SetOnePasswordSDKProvider(w.launcher.GetOnePasswordProvider())
@@ -497,13 +502,21 @@ func (w *MainWindow) connectToSelected() {
 func (w *MainWindow) connectToConnection(conn *models.Connection) {
 	w.logger.LogInfo(fmt.Sprintf("Launching connection to %s (%s)", conn.Name, conn.Host))
 
-	if err := w.launcher.Launch(conn); err != nil {
-		w.logger.LogError(fmt.Sprintf("Failed to launch %s: %v", conn.Name, err))
-		dialog.ShowError(fmt.Errorf("Failed to launch connection: %w", err), w.window)
-		return
-	}
+	// Launch in a goroutine to avoid blocking the UI thread
+	// This allows dialogs (like credential prompts) to work properly
+	go func() {
+		fmt.Printf("[DEBUG] Goroutine started for connection launch\n")
+		if err := w.launcher.Launch(conn); err != nil {
+			fmt.Printf("[DEBUG] Launch returned error: %v\n", err)
+			w.logger.LogError(fmt.Sprintf("Failed to launch %s: %v", conn.Name, err))
+			dialog.ShowError(fmt.Errorf("Failed to launch connection: %w", err), w.window)
+			return
+		}
 
-	w.logger.LogSuccess(fmt.Sprintf("Successfully launched connection to %s", conn.Name))
+		fmt.Printf("[DEBUG] Launch completed successfully\n")
+		w.logger.LogSuccess(fmt.Sprintf("Successfully launched connection to %s", conn.Name))
+	}()
+	fmt.Printf("[DEBUG] Goroutine dispatched\n")
 }
 
 func (w *MainWindow) editSelected() {

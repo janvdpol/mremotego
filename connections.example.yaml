@@ -16,9 +16,9 @@ connections:
     protocol: ssh
     host: prod.example.com
     port: 22
-    username: root
+    username: op://DevOps/prod-server/username
     password: op://DevOps/prod-server/password
-    description: SSH to production server (password in 1Password)
+    description: SSH to production server (credentials in 1Password)
 
   # Example SSH connection with encrypted password
   # (Run encrypt-passwords tool to encrypt your passwords)
@@ -30,6 +30,18 @@ connections:
     username: admin
     password: enc:base64encodedencrypteddata...
     description: SSH with encrypted password
+
+  # Example connection that will prompt for credentials
+  # When username or password is empty (or 1Password reference fails),
+  # the app will show a credential prompt dialog
+  - name: Personal Server (will prompt)
+    type: connection
+    protocol: ssh
+    host: my-server.example.com
+    port: 22
+    username: ""
+    password: ""
+    description: App will prompt for credentials when connecting
 
   # Example RDP connection
   - name: Windows Server

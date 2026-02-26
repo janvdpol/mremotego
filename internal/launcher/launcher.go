@@ -13,9 +13,14 @@ import (
 	"github.com/jaydenthorup/mremotego/pkg/models"
 )
 
+// CredentialProvider is a callback function for prompting credentials
+// Returns username, password, and error
+type CredentialProvider func(conn *models.Connection, needUsername, needPassword bool) (string, string, error)
+
 // Launcher handles launching connections
 type Launcher struct {
 	onePasswordProvider *secrets.OnePasswordSDKProvider
+	credentialProvider  CredentialProvider
 }
 
 // NewLauncher creates a new launcher with 1Password SDK integration
@@ -32,42 +37,96 @@ func (l *Launcher) GetOnePasswordProvider() *secrets.OnePasswordSDKProvider {
 	return l.onePasswordProvider
 }
 
+// SetCredentialProvider sets the callback for prompting credentials
+func (l *Launcher) SetCredentialProvider(provider CredentialProvider) {
+	l.credentialProvider = provider
+}
+
+// resolveCredentials resolves username and password from 1Password or prompt
+// Returns resolved username, password, and error
+func (l *Launcher) resolveCredentials(conn *models.Connection) (string, string, error) {
+	username := conn.Username
+	password := conn.Password
+	needUsername := false
+	needPassword := false
+
+	// Try to resolve username from 1Password if it's a reference
+	if l.onePasswordProvider.IsReference(conn.Username) {
+		resolved, err := l.onePasswordProvider.ResolveSecret(conn.Username)
+		if err != nil {
+			fmt.Printf("[WARNING] Failed to resolve username from 1Password: %v\n", err)
+			username = ""
+			needUsername = true
+		} else {
+			fmt.Printf("[DEBUG] Successfully resolved username from 1Password\n")
+			username = resolved
+		}
+	} else if username == "" {
+		needUsername = true
+	}
+
+	// Try to resolve password from 1Password if it's a reference
+	if l.onePasswordProvider.IsReference(conn.Password) {
+		fmt.Printf("[DEBUG] Detected 1Password reference for password: %s\n", conn.Password)
+		if !l.onePasswordProvider.IsAuthenticated() {
+			fmt.Println("[DEBUG] 1Password SDK is not authenticated")
+			instructions := l.onePasswordProvider.GetAuthenticationInstructions()
+			fmt.Println(instructions)
+		}
+
+		resolved, err := l.onePasswordProvider.ResolveSecret(conn.Password)
+		if err != nil {
+			fmt.Printf("[WARNING] Failed to resolve password from 1Password: %v\n", err)
+			password = ""
+			needPassword = true
+		} else {
+			fmt.Printf("[DEBUG] Successfully resolved password from 1Password (length: %d)\n", len(resolved))
+			password = resolved
+		}
+	} else if password == "" {
+		// Empty password might be intentional (SSH keys, etc.)
+		// Only prompt if protocol typically requires it
+		if conn.Protocol == models.ProtocolRDP || conn.Protocol == models.ProtocolVNC {
+			needPassword = true
+		}
+	}
+
+	// If we need credentials and have a provider, prompt the user
+	if (needUsername || needPassword) && l.credentialProvider != nil {
+		fmt.Printf("[DEBUG] Prompting for credentials (username: %v, password: %v)\n", needUsername, needPassword)
+		promptedUser, promptedPass, err := l.credentialProvider(conn, needUsername, needPassword)
+		if err != nil {
+			fmt.Printf("[DEBUG] Credential prompt returned error: %v\n", err)
+			return "", "", fmt.Errorf("credential prompt cancelled or failed: %w", err)
+		}
+		fmt.Printf("[DEBUG] Credential prompt completed successfully\n")
+		if needUsername {
+			username = promptedUser
+		}
+		if needPassword {
+			password = promptedPass
+		}
+	}
+
+	return username, password, nil
+}
+
 // Launch launches a connection based on its protocol
 func (l *Launcher) Launch(conn *models.Connection) error {
 	if conn.IsFolder() {
 		return fmt.Errorf("cannot launch a folder")
 	}
 
-	// Resolve 1Password reference if needed (make a copy to avoid modifying the original)
+	// Resolve credentials from 1Password or prompt if needed
 	resolvedConn := *conn
-	if l.onePasswordProvider.IsReference(conn.Password) {
-		fmt.Printf("[DEBUG] Detected 1Password reference: %s\n", conn.Password)
-
-		// Check if SDK is authenticated
-		if !l.onePasswordProvider.IsAuthenticated() {
-			fmt.Println("[DEBUG] 1Password SDK is not authenticated")
-			instructions := l.onePasswordProvider.GetAuthenticationInstructions()
-			fmt.Println(instructions)
-		} else {
-			fmt.Println("[DEBUG] 1Password SDK is authenticated")
-		}
-
-		resolved, err := l.onePasswordProvider.ResolveSecret(conn.Password)
-		if err != nil {
-			// For RDP and SSH, we can continue without a password
-			// RDP will prompt, SSH can use keys
-			if conn.Protocol == models.ProtocolRDP || conn.Protocol == models.ProtocolSSH {
-				fmt.Printf("[WARNING] Failed to resolve password from 1Password: %v (connection will proceed without password)\n", err)
-				resolvedConn.Password = ""
-			} else {
-				// For other protocols that require a password, return the error
-				return fmt.Errorf("failed to resolve password from 1Password: %w", err)
-			}
-		} else {
-			fmt.Printf("[DEBUG] Successfully resolved password from 1Password (length: %d)\n", len(resolved))
-			resolvedConn.Password = resolved
-		}
+	username, password, err := l.resolveCredentials(conn)
+	if err != nil {
+		return fmt.Errorf("failed to resolve credentials: %w", err)
 	}
+	resolvedConn.Username = username
+	resolvedConn.Password = password
+	fmt.Printf("[DEBUG] Launching %s connection to %s (username: %s, has password: %v)\n", 
+		resolvedConn.Protocol, resolvedConn.Host, resolvedConn.Username, resolvedConn.Password != "")
 
 	switch resolvedConn.Protocol {
 	case models.ProtocolSSH:
@@ -318,8 +377,10 @@ func (l *Launcher) launchRDP(conn *models.Connection) error {
 
 	switch runtime.GOOS {
 	case "windows":
+		fmt.Printf("[DEBUG] Creating RDP connection to %s\n", target)
 		// Store credentials in Windows Credential Manager if password is provided
 		if conn.Username != "" && conn.Password != "" {
+			fmt.Printf("[DEBUG] Storing credentials in Windows Credential Manager\n")
 			if err := l.storeWindowsCredential(conn); err != nil {
 				// Continue anyway - mstsc will prompt if credentials aren't stored
 				fmt.Printf("Warning: Failed to store credentials: %v\n", err)
@@ -327,12 +388,15 @@ func (l *Launcher) launchRDP(conn *models.Connection) error {
 		}
 
 		// Create a temporary .rdp file with connection settings
+		fmt.Printf("[DEBUG] Creating RDP file\n")
 		rdpFile, err := l.createRDPFile(conn, target)
 		if err != nil {
 			return fmt.Errorf("failed to create RDP file: %w", err)
 		}
+		fmt.Printf("[DEBUG] RDP file created: %s\n", rdpFile)
 
 		// Launch mstsc with the RDP file
+		fmt.Printf("[DEBUG] Launching mstsc.exe with RDP file\n")
 		cmd = exec.Command("mstsc", rdpFile)
 		// Don't hide mstsc - it's a GUI application we want to see
 

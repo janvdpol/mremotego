@@ -229,9 +229,14 @@ func (w *MainWindow) showAddConnectionDialog() {
 					dialog.ShowError(fmt.Errorf("Failed to create 1Password item: %w", err), w.window)
 					return
 				}
-				// Replace password with 1Password reference
+				// Replace both username and password with 1Password references
+				// 1Password is the single source of truth
+				vault, item, _, parseErr := w.parseOnePasswordReference(reference)
+				if parseErr == nil {
+					conn.Username = fmt.Sprintf("op://%s/%s/username", vault, item)
+				}
 				conn.Password = reference
-				dialog.ShowInformation("Success", "Password stored in 1Password vault", w.window)
+				dialog.ShowInformation("Success", "Credentials stored in 1Password vault", w.window)
 			}
 
 			// Add to selected folder or root
@@ -436,9 +441,30 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 					dialog.ShowError(fmt.Errorf("Failed to create 1Password item: %w", err), w.window)
 					return
 				}
-				// Replace password with 1Password reference
+				// Replace both username and password with 1Password references
+				// 1Password is the single source of truth
+				vault, item, _, parseErr := w.parseOnePasswordReference(reference)
+				if parseErr == nil {
+					conn.Username = fmt.Sprintf("op://%s/%s/username", vault, item)
+				}
 				conn.Password = reference
-				dialog.ShowInformation("Success", "Password stored in 1Password vault", w.window)
+				dialog.ShowInformation("Success", "Credentials stored in 1Password vault", w.window)
+			} else if w.manager.IsOnePasswordReference(conn.Password) {
+				// Password is already a 1Password reference - update username in 1Password
+				vault, item, _, err := w.parseOnePasswordReference(conn.Password)
+				if err == nil && usernameEntry.Text != "" {
+					w.logger.LogInfo(fmt.Sprintf("Updating username in 1Password for %s", item))
+					err := w.launcher.GetOnePasswordProvider().UpdateItemUsername(vault, item, usernameEntry.Text)
+					if err != nil {
+						w.logger.LogError(fmt.Sprintf("Failed to update username in 1Password: %v", err))
+						dialog.ShowError(fmt.Errorf("Failed to update username in 1Password: %w", err), w.window)
+						return
+					}
+					w.logger.LogSuccess(fmt.Sprintf("Updated username in 1Password for %s", item))
+					// Update connection to use 1Password reference for username
+					conn.Username = fmt.Sprintf("op://%s/%s/username", vault, item)
+				}
+				conn.Password = passwordEntry.Text
 			} else {
 				conn.Password = passwordEntry.Text
 			}
@@ -446,7 +472,10 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 			conn.Name = nameEntry.Text
 			conn.Protocol = models.Protocol(protocolSelect.Selected)
 			conn.Host = hostEntry.Text
-			conn.Username = usernameEntry.Text
+			// Only update username directly if not using 1Password
+			if !w.manager.IsOnePasswordReference(conn.Password) {
+				conn.Username = usernameEntry.Text
+			}
 			conn.Domain = domainEntry.Text
 			conn.Description = descriptionEntry.Text
 			conn.Modified = time.Now().Format(time.RFC3339)
@@ -711,4 +740,120 @@ func (w *MainWindow) showVaultMappingsDialog() {
 	d := dialog.NewCustom("Configure Vault Names", "Close", form, w.window)
 	d.Resize(fyne.NewSize(600, 400))
 	d.Show()
+}
+
+// showCredentialPrompt prompts the user for credentials
+// Returns username, password, and error (error is non-nil if cancelled)
+func (w *MainWindow) showCredentialPrompt(conn *models.Connection, needUsername, needPassword bool) (string, string, error) {
+	if !needUsername && !needPassword {
+		return "", "", nil
+	}
+
+	resultChan := make(chan struct {
+		username string
+		password string
+		err      error
+	})
+
+	// Create form items
+	var usernameEntry *widget.Entry
+	var passwordEntry *widget.Entry
+	var formItems []*widget.FormItem
+
+	if needUsername {
+		usernameEntry = widget.NewEntry()
+		usernameEntry.SetPlaceHolder("Enter username")
+		if conn.Username != "" && !w.launcher.GetOnePasswordProvider().IsReference(conn.Username) {
+			usernameEntry.SetText(conn.Username)
+		}
+		formItems = append(formItems, widget.NewFormItem("Username", usernameEntry))
+	}
+
+	if needPassword {
+		passwordEntry = widget.NewPasswordEntry()
+		passwordEntry.SetPlaceHolder("Enter password")
+		formItems = append(formItems, widget.NewFormItem("Password", passwordEntry))
+	}
+
+	// Add connection info
+	infoLabel := widget.NewLabel(fmt.Sprintf("Connection: %s\\nHost: %s\\nProtocol: %s",
+		conn.Name, conn.Host, conn.Protocol))
+	formItems = append([]*widget.FormItem{widget.NewFormItem("", infoLabel)}, formItems...)
+
+	// Track if callback has already been called
+	var callbackFired bool
+
+	// Create dialog using NewForm which automatically adds Submit and Cancel buttons
+	d := dialog.NewForm("Enter Credentials", "Connect", "Cancel", formItems,
+		func(submitted bool) {
+			// Prevent double-firing
+			if callbackFired {
+				fmt.Println("[DEBUG] Dialog callback already fired, ignoring duplicate")
+				return
+			}
+			callbackFired = true
+
+			fmt.Printf("[DEBUG] Dialog callback fired! submitted=%v\n", submitted)
+			if !submitted {
+				resultChan <- struct {
+					username string
+					password string
+					err      error
+				}{"", "", fmt.Errorf("credential prompt cancelled")}
+				return
+			}
+
+			username := ""
+			password := ""
+
+			if needUsername && usernameEntry != nil {
+				username = usernameEntry.Text
+				fmt.Printf("[DEBUG] Got username: %s\n", username)
+			}
+			if needPassword && passwordEntry != nil {
+				password = passwordEntry.Text
+				fmt.Printf("[DEBUG] Got password (length: %d)\n", len(password))
+			}
+
+			resultChan <- struct {
+				username string
+				password string
+				err      error
+			}{username, password, nil}
+		}, w.window)
+	d.Resize(fyne.NewSize(400, 250))
+	d.Show()
+
+	// Wait for result with timeout
+	fmt.Println("[DEBUG] Waiting for credential prompt result...")
+	select {
+	case result := <-resultChan:
+		fmt.Printf("[DEBUG] Received result from credential prompt (err: %v)\n", result.err)
+		d.Hide()
+		return result.username, result.password, result.err
+	case <-time.After(60 * time.Second):
+		fmt.Println("[DEBUG] Credential prompt timed out!")
+		d.Hide()
+		return "", "", fmt.Errorf("credential prompt timed out")
+	}
+}
+
+// parseOnePasswordReference parses a 1Password reference into vault, item, and field
+// Input: op://vault/item/field
+// Output: vault, item, field, error
+func (w *MainWindow) parseOnePasswordReference(reference string) (string, string, string, error) {
+	if !strings.HasPrefix(reference, "op://") {
+		return "", "", "", fmt.Errorf("reference must start with op://")
+	}
+
+	// Remove the "op://" prefix
+	rest := strings.TrimPrefix(reference, "op://")
+
+	// Split by "/" to get: [vault, item, field, ...]
+	parts := strings.SplitN(rest, "/", 3)
+	if len(parts) < 3 {
+		return "", "", "", fmt.Errorf("reference must be in format op://vault/item/field")
+	}
+
+	return parts[0], parts[1], parts[2], nil
 }

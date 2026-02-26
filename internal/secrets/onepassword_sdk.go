@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -64,6 +65,17 @@ func NewOnePasswordSDKProvider(accountName string) *OnePasswordSDKProvider {
 		// SDK initialization failed - desktop app integration not available
 		// Try to fall back to CLI provider
 		fmt.Printf("[1Password SDK] ❌ Failed to initialize: %v\n", err)
+
+		// Check for specific error conditions
+		if strings.Contains(err.Error(), "All pipe instances are busy") {
+			fmt.Println("")
+			fmt.Println("⚠️  1Password desktop app connection failed (pipe busy)")
+			fmt.Println("   Try these steps:")
+			fmt.Println("   1. Close and restart the 1Password desktop app")
+			fmt.Println("   2. Ensure Settings → Developer → SDK integration is enabled")
+			fmt.Println("   3. Make sure no other apps are using the SDK connection")
+			fmt.Println("")
+		}
 
 		if provider.cliProvider.IsEnabled() {
 			fmt.Println("[1Password] ✅ Falling back to CLI provider (op)")
@@ -189,6 +201,11 @@ func (p *OnePasswordSDKProvider) IsAuthenticated() bool {
 	return false
 }
 
+// HasCLIFallback returns whether CLI fallback is available
+func (p *OnePasswordSDKProvider) HasCLIFallback() bool {
+	return p.cliProvider != nil && p.cliProvider.IsEnabled()
+}
+
 // GetAuthenticationInstructions returns instructions for authenticating with 1Password SDK
 func (p *OnePasswordSDKProvider) GetAuthenticationInstructions() string {
 	// Check if CLI is available as fallback
@@ -213,12 +230,16 @@ func (p *OnePasswordSDKProvider) GetAuthenticationInstructions() string {
    • Turn on "Integrate with the 1Password SDKs"
    • Turn on "Integrate with other apps"
 
-4. In your config.yaml, set:
+4. Enable Biometric Unlock:
+   • Go to Settings → Security
+   • Turn on "Unlock with Windows Hello"
+   
+5. In your config.yaml, set:
    settings:
      onePasswordAccount: "Your Account Name"
    (Find this at the top of the 1Password sidebar)
 
-5. Restart MremoteGO and unlock with biometrics!
+6. Restart MremoteGO and unlock with biometrics!
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -287,6 +308,32 @@ func (p *OnePasswordSDKProvider) GetAuthenticationInstructions() string {
 	return baseInstructions + statusInfo
 }
 
+// reinitializeClient attempts to reinitialize the SDK client when connection goes stale
+func (p *OnePasswordSDKProvider) reinitializeClient() error {
+	if p.accountName == "" {
+		return fmt.Errorf("account name not configured")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	fmt.Printf("[1Password SDK] Reconnecting to account: %s\n", p.accountName)
+	client, err := onepassword.NewClient(
+		ctx,
+		onepassword.WithDesktopAppIntegration(p.accountName),
+		onepassword.WithIntegrationInfo("MremoteGO", "v2.0.0"),
+	)
+
+	if err != nil {
+		fmt.Printf("[1Password SDK] ❌ Failed to reconnect: %v\n", err)
+		return err
+	}
+
+	p.client = client
+	fmt.Println("[1Password SDK] ✅ Reconnected successfully!")
+	return nil
+}
+
 // IsReference checks if a string is a 1Password reference (starts with op://)
 func (p *OnePasswordSDKProvider) IsReference(value string) bool {
 	return strings.HasPrefix(value, "op://")
@@ -304,14 +351,32 @@ func (p *OnePasswordSDKProvider) ResolveSecret(reference string) (string, error)
 	if p.enabled && p.client != nil {
 		// Use SDK's Resolve method which handles the full reference format
 		// This includes special characters, URL encoding, etc.
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// Use longer timeout to allow for biometric authentication
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		secret, err := p.client.Secrets().Resolve(ctx, reference)
 		if err != nil {
+			// Check for connection errors that indicate stale/idle connection
+			if strings.Contains(err.Error(), "pipe") || strings.Contains(err.Error(), "connection") || strings.Contains(err.Error(), "EOF") {
+				fmt.Println("[1Password SDK] Connection appears stale, attempting to reconnect...")
+				if reconnectErr := p.reinitializeClient(); reconnectErr == nil {
+					// Retry the operation with new client
+					ctx2, cancel2 := context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel2()
+					secret, err = p.client.Secrets().Resolve(ctx2, reference)
+					if err == nil {
+						return secret, nil
+					}
+				}
+			}
+
 			// Check for authentication errors
 			if strings.Contains(err.Error(), "not authenticated") || strings.Contains(err.Error(), "authorization") {
 				return "", fmt.Errorf("not authenticated with 1Password - please unlock the desktop app: %w", err)
+			}
+			if strings.Contains(err.Error(), "context deadline exceeded") {
+				return "", fmt.Errorf("timeout waiting for 1Password authentication - please approve the biometric prompt: %w", err)
 			}
 			return "", fmt.Errorf("failed to retrieve secret from 1Password SDK: %w", err)
 		}
@@ -473,6 +538,113 @@ func (p *OnePasswordSDKProvider) CreateItem(vault, title, username, password str
 	encodedTitle := url.PathEscape(title)
 	reference := fmt.Sprintf("op://%s/%s/password", vault, encodedTitle)
 	return reference, nil
+}
+
+// UpdateItemUsername adds or updates the username field in an existing 1Password item
+// Returns error if the item doesn't exist or update fails
+func (p *OnePasswordSDKProvider) UpdateItemUsername(vault, title, username string) error {
+	if !p.enabled || p.client == nil {
+		// Fall back to CLI if SDK is not available
+		if p.cliProvider != nil && p.cliProvider.IsEnabled() {
+			return p.updateItemUsernameCLI(vault, title, username)
+		}
+		return fmt.Errorf("1Password is not available - neither SDK nor CLI is configured")
+	}
+
+	if vault == "" || title == "" || username == "" {
+		return fmt.Errorf("vault, title, and username are required")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Find the vault
+	vaults, err := p.client.Vaults().List(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list vaults: %w", err)
+	}
+
+	var vaultID string
+	for _, v := range vaults {
+		if v.Title == vault || v.ID == vault {
+			vaultID = v.ID
+			break
+		}
+	}
+
+	if vaultID == "" {
+		return fmt.Errorf("vault '%s' not found", vault)
+	}
+
+	// Find the item
+	items, err := p.client.Items().List(ctx, vaultID)
+	if err != nil {
+		return fmt.Errorf("failed to list items in vault: %w", err)
+	}
+
+	var itemID string
+	for _, item := range items {
+		if item.Title == title {
+			itemID = item.ID
+			break
+		}
+	}
+
+	if itemID == "" {
+		return fmt.Errorf("item '%s' not found in vault '%s'", title, vault)
+	}
+
+	// Get the full item with fields
+	item, err := p.client.Items().Get(ctx, vaultID, itemID)
+	if err != nil {
+		return fmt.Errorf("failed to get item: %w", err)
+	}
+
+	// Check if username field already exists
+	usernameExists := false
+	for i, field := range item.Fields {
+		if field.ID == "username" || strings.ToLower(field.Title) == "username" {
+			// Update existing username field
+			item.Fields[i].Value = username
+			usernameExists = true
+			break
+		}
+	}
+
+	// Add username field if it doesn't exist
+	if !usernameExists {
+		item.Fields = append(item.Fields, onepassword.ItemField{
+			ID:        "username",
+			Title:     "username",
+			Value:     username,
+			FieldType: onepassword.ItemFieldTypeText,
+		})
+	}
+
+	// Note: The Go SDK v0.4.x doesn't expose a Put/Update method
+	// We need to use the CLI as a workaround
+	fmt.Println("  [INFO] 1Password SDK doesn't support item updates, using CLI fallback...")
+	return p.updateItemUsernameCLI(vault, title, username)
+}
+
+// updateItemUsernameCLI updates an item's username field using the CLI
+func (p *OnePasswordSDKProvider) updateItemUsernameCLI(vault, title, username string) error {
+	if p.cliProvider == nil || !p.cliProvider.IsEnabled() {
+		return fmt.Errorf("1Password CLI is not available")
+	}
+
+	// Use op CLI to edit the item
+	// Format: op item edit <item> username=<value> --vault=<vault>
+	fmt.Printf("  [CLI] Updating username for '%s' in vault '%s'...\n", title, vault)
+
+	cmd := exec.Command("op", "item", "edit", title, fmt.Sprintf("username=%s", username), fmt.Sprintf("--vault=%s", vault))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to update item via CLI: %w (output: %s)", err, string(output))
+	}
+
+	fmt.Printf("  [CLI] ✓ Successfully updated username for '%s'\n", title)
+	return nil
 }
 
 // ListVaults returns a list of available 1Password vaults
