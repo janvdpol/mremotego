@@ -601,17 +601,7 @@ func (l *Launcher) storeWindowsCredential(conn *models.Connection) error {
 		username = fmt.Sprintf("%s\\%s", conn.Domain, conn.Username)
 	}
 
-	// Use cmdkey to store the credential
-	// cmdkey /generic:TERMSRV/hostname /user:username /pass:password
-	cmd := exec.Command("cmdkey", "/generic:TERMSRV/"+target, "/user:"+username, "/pass:"+conn.Password)
-	hideConsoleWindow(cmd)
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("cmdkey failed: %w, output: %s", err, string(output))
-	}
-
-	return nil
+	return writeWindowsCredential("TERMSRV/"+target, username, conn.Password)
 }
 
 // RemoveWindowsCredential removes RDP credentials from Windows Credential Manager
@@ -630,20 +620,7 @@ func (l *Launcher) RemoveWindowsCredential(conn *models.Connection) error {
 		target = fmt.Sprintf("%s:%d", conn.Host, port)
 	}
 
-	// Use cmdkey to delete the credential
-	// cmdkey /delete:TERMSRV/hostname
-	cmd := exec.Command("cmdkey", "/delete:TERMSRV/"+target)
-	hideConsoleWindow(cmd)
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		// Don't return error if credential doesn't exist
-		if !strings.Contains(string(output), "not found") {
-			return fmt.Errorf("cmdkey delete failed: %w, output: %s", err, string(output))
-		}
-	}
-
-	return nil
+	return deleteWindowsCredential("TERMSRV/" + target)
 }
 
 // CleanupAllCredentials removes all MremoteGO-stored credentials from Windows Credential Manager
