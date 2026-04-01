@@ -36,7 +36,10 @@ func writeWindowsCredential(target, username, password string) error {
 
 	// Encode password as UTF-16LE bytes without null terminator, as expected by
 	// Windows Credential Manager for RDP credentials consumed by mstsc.
-	passUTF16 := syscall.StringToUTF16(password)
+	passUTF16, err := syscall.UTF16FromString(password)
+	if err != nil {
+		return fmt.Errorf("invalid password: %w", err)
+	}
 	passUTF16 = passUTF16[:len(passUTF16)-1] // strip null terminator
 	passBlobSize := uint32(len(passUTF16) * 2)
 
