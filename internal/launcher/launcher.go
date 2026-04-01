@@ -36,8 +36,15 @@ func (l *Launcher) Launch(conn *models.Connection) error {
 		return fmt.Errorf("cannot launch a folder")
 	}
 
-	// Resolve 1Password reference if needed (make a copy to avoid modifying the original)
+	// Resolve 1Password references if needed (make a copy to avoid modifying the original)
 	resolvedConn := *conn
+	if l.onePasswordProvider.IsReference(conn.Username) {
+		resolved, err := l.onePasswordProvider.ResolveSecret(conn.Username)
+		if err != nil {
+			return fmt.Errorf("failed to resolve username from 1Password: %w", err)
+		}
+		resolvedConn.Username = resolved
+	}
 	if l.onePasswordProvider.IsReference(conn.Password) {
 		resolved, err := l.onePasswordProvider.ResolveSecret(conn.Password)
 		if err != nil {
