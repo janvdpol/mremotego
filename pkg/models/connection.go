@@ -40,6 +40,15 @@ type Connection struct {
 	Resolution string `yaml:"resolution,omitempty"`  // For RDP
 	ExtraArgs  string `yaml:"extra_args,omitempty"`  // Additional protocol-specific args
 
+	// RDP Gateway options (RDP only)
+	UseGateway         bool   `yaml:"use_gateway,omitempty"`
+	GatewayUsageMethod string `yaml:"gateway_usage_method,omitempty"` // "never", "always", "detect"
+	GatewayHostname    string `yaml:"gateway_hostname,omitempty"`
+	GatewayCredentials string `yaml:"gateway_credentials,omitempty"` // "same", "different", "smartcard"
+	GatewayUsername    string `yaml:"gateway_username,omitempty"`
+	GatewayPassword    string `yaml:"gateway_password,omitempty"`
+	GatewayDomain      string `yaml:"gateway_domain,omitempty"`
+
 	// Metadata
 	Tags     []string `yaml:"tags,omitempty"`
 	Notes    string   `yaml:"notes,omitempty"`
@@ -118,22 +127,29 @@ func (c *Connection) DeepCopy() *Connection {
 	}
 
 	connCopy := &Connection{
-		Name:        c.Name,
-		Type:        c.Type,
-		Protocol:    c.Protocol,
-		Host:        c.Host,
-		Port:        c.Port,
-		Username:    c.Username,
-		Password:    c.Password,
-		Domain:      c.Domain,
-		Description: c.Description,
-		UseCredSSP:  c.UseCredSSP,
-		ColorDepth:  c.ColorDepth,
-		Resolution:  c.Resolution,
-		ExtraArgs:   c.ExtraArgs,
-		Notes:       c.Notes,
-		Created:     c.Created,
-		Modified:    c.Modified,
+		Name:               c.Name,
+		Type:               c.Type,
+		Protocol:           c.Protocol,
+		Host:               c.Host,
+		Port:               c.Port,
+		Username:           c.Username,
+		Password:           c.Password,
+		Domain:             c.Domain,
+		Description:        c.Description,
+		UseCredSSP:         c.UseCredSSP,
+		ColorDepth:         c.ColorDepth,
+		Resolution:         c.Resolution,
+		ExtraArgs:          c.ExtraArgs,
+		UseGateway:         c.UseGateway,
+		GatewayUsageMethod: c.GatewayUsageMethod,
+		GatewayHostname:    c.GatewayHostname,
+		GatewayCredentials: c.GatewayCredentials,
+		GatewayUsername:    c.GatewayUsername,
+		GatewayPassword:    c.GatewayPassword,
+		GatewayDomain:      c.GatewayDomain,
+		Notes:              c.Notes,
+		Created:            c.Created,
+		Modified:           c.Modified,
 	}
 
 	// Deep copy tags
