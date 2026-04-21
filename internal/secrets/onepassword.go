@@ -37,6 +37,7 @@ func (p *OnePasswordProvider) IsAuthenticated() bool {
 	}
 
 	cmd := exec.Command("op", "whoami")
+	hideConsoleWindow(cmd)
 	return cmd.Run() == nil
 }
 
@@ -94,6 +95,7 @@ func (p *OnePasswordProvider) ResolveSecret(reference string) (string, error) {
 	// Use 'op item get' which handles special characters in item names
 	// This is more robust than 'op read' for items with parentheses, spaces, etc.
 	cmd := exec.Command("op", "item", "get", item, "--vault="+vault, "--fields", "label="+field, "--reveal")
+	hideConsoleWindow(cmd)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -167,6 +169,7 @@ func (p *OnePasswordProvider) CheckItemExists(vault, title string) (string, bool
 
 	// Try to get the item
 	cmd := exec.Command("op", "item", "get", title, "--vault="+vault, "--format=json")
+	hideConsoleWindow(cmd)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -220,6 +223,7 @@ func (p *OnePasswordProvider) CreateItem(vault, title, username, password string
 		}
 
 		cmd := exec.Command("op", args...)
+		hideConsoleWindow(cmd)
 
 		output, err := cmd.CombinedOutput()
 		if err != nil {
@@ -243,6 +247,7 @@ func (p *OnePasswordProvider) CreateItem(vault, title, username, password string
 		}
 
 		cmd := exec.Command("op", args...)
+		hideConsoleWindow(cmd)
 
 		output, err := cmd.CombinedOutput()
 		if err != nil {
@@ -264,6 +269,7 @@ func (p *OnePasswordProvider) ListVaults() ([]string, error) {
 	}
 
 	cmd := exec.Command("op", "vault", "list", "--format=json")
+	hideConsoleWindow(cmd)
 
 	_, err := cmd.Output()
 	if err != nil {
