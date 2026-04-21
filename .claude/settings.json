@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(go build:*)"
+      "Bash(go build:*)",
+      "Bash(make build *)"
+    ],
+    "additionalDirectories": [
+      "c:\\github\\jaydenthorup\\mremotego",
+      "c:\\github\\jaydenthorup\\mremotego\\bin"
     ]
   }
 }

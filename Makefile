@@ -25,7 +25,7 @@ build-cli:
 # Build the GUI application
 build-gui:
 	@echo "Building $(GUI_BINARY)..."
-	@go build -o $(BUILD_DIR)/$(GUI_BINARY) $(GUI_PATH)
+	@go build -ldflags="-H windowsgui" -o $(BUILD_DIR)/$(GUI_BINARY) $(GUI_PATH)
 	@echo "✓ GUI build complete: $(BUILD_DIR)/$(GUI_BINARY)"
 
 # Build for multiple platforms
@@ -40,7 +40,7 @@ build-all:
 	@GOOS=linux GOARCH=amd64 go build -o $(BUILD_DIR)/$(GUI_BINARY)-linux-amd64 $(GUI_PATH)
 	@GOOS=darwin GOARCH=amd64 go build -o $(BUILD_DIR)/$(GUI_BINARY)-darwin-amd64 $(GUI_PATH)
 	@GOOS=darwin GOARCH=arm64 go build -o $(BUILD_DIR)/$(GUI_BINARY)-darwin-arm64 $(GUI_PATH)
-	@GOOS=windows GOARCH=amd64 go build -o $(BUILD_DIR)/$(GUI_BINARY)-windows-amd64.exe $(GUI_PATH)
+	@GOOS=windows GOARCH=amd64 go build -ldflags="-H windowsgui" -o $(BUILD_DIR)/$(GUI_BINARY)-windows-amd64.exe $(GUI_PATH)
 	@echo "✓ GUI multi-platform build complete"
 
 # Clean build artifacts

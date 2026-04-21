@@ -10,7 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-"fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/jaydenthorup/mremotego/pkg/models"
 )
@@ -175,8 +175,21 @@ func (w *MainWindow) showAddConnectionDialog() {
 	folderSelect := widget.NewSelect(folderNames, nil)
 	folderSelect.SetSelected("(Root)")
 
-	// RDP Gateway widgets
-	useGatewayCheck := widget.NewCheck("Use RDP Gateway", nil)
+	// RDP-specific widgets (shown for any RDP connection)
+	authLevelSelect := widget.NewSelect([]string{"Always connect, even if authentication fails", "Don't connect if authentication fails", "Warn me if authentication fails"}, nil)
+	authLevelSelect.SetSelected("Always connect, even if authentication fails")
+	authLevelLabel := widget.NewLabelWithStyle("Auth Level", fyne.TextAlignTrailing, fyne.TextStyle{})
+	authLevelLabel.Hide()
+	authLevelSelect.Hide()
+
+	useCredSSPCheck := widget.NewCheck("Use CredSSP", nil)
+	useCredSSPCheck.SetChecked(true)
+	credSSPLabel := widget.NewLabel("")
+	credSSPLabel.Hide()
+	useCredSSPCheck.Hide()
+
+	// RD Gateway widgets
+	useGatewayCheck := widget.NewCheck("Use RD Gateway", nil)
 
 	gatewayUsageSelect := widget.NewSelect([]string{"Never", "Always", "Detect"}, nil)
 	gatewayUsageSelect.SetSelected("Always")
@@ -195,12 +208,18 @@ func (w *MainWindow) showAddConnectionDialog() {
 	gatewayDomainEntry := widget.NewEntry()
 	gatewayDomainEntry.SetPlaceHolder("gateway domain")
 
+	gatewayProfileSelect := widget.NewSelect([]string{"Use settings from this connection", "Use system default gateway profile"}, nil)
+	gatewayProfileSelect.SetSelected("Use settings from this connection")
+	gatewayBypassLocalCheck := widget.NewCheck("Bypass gateway for local addresses", nil)
+
 	gatewayUsageLabel := widget.NewLabelWithStyle("Gateway Usage", fyne.TextAlignTrailing, fyne.TextStyle{})
 	gatewayHostnameLabel := widget.NewLabelWithStyle("Gateway Hostname", fyne.TextAlignTrailing, fyne.TextStyle{})
 	gatewayCredentialsLabel := widget.NewLabelWithStyle("Gateway Credentials", fyne.TextAlignTrailing, fyne.TextStyle{})
 	gatewayUsernameLabel := widget.NewLabelWithStyle("Gateway Username", fyne.TextAlignTrailing, fyne.TextStyle{})
 	gatewayPasswordLabel := widget.NewLabelWithStyle("Gateway Password", fyne.TextAlignTrailing, fyne.TextStyle{})
 	gatewayDomainLabel := widget.NewLabelWithStyle("Gateway Domain", fyne.TextAlignTrailing, fyne.TextStyle{})
+	gatewayProfileLabel := widget.NewLabelWithStyle("Gateway Profile", fyne.TextAlignTrailing, fyne.TextStyle{})
+	gatewayBypassLocalLabel := widget.NewLabel("")
 
 	// All gateway rows start hidden
 	gatewayUsageLabel.Hide()
@@ -215,6 +234,10 @@ func (w *MainWindow) showAddConnectionDialog() {
 	gatewayPasswordEntry.Hide()
 	gatewayDomainLabel.Hide()
 	gatewayDomainEntry.Hide()
+	gatewayProfileLabel.Hide()
+	gatewayProfileSelect.Hide()
+	gatewayBypassLocalLabel.Hide()
+	gatewayBypassLocalCheck.Hide()
 
 	// 1Password integration
 	storeTo1PasswordCheck := widget.NewCheck("Store password in 1Password", nil)
@@ -231,13 +254,24 @@ func (w *MainWindow) showAddConnectionDialog() {
 	var formContainer *fyne.Container
 
 	hideAllGatewayRows := func() {
-		gatewayCheckLabel.Hide(); useGatewayCheck.Hide()
-		gatewayUsageLabel.Hide(); gatewayUsageSelect.Hide()
-		gatewayHostnameLabel.Hide(); gatewayHostnameEntry.Hide()
-		gatewayCredentialsLabel.Hide(); gatewayCredentialsSelect.Hide()
-		gatewayUsernameLabel.Hide(); gatewayUsernameEntry.Hide()
-		gatewayPasswordLabel.Hide(); gatewayPasswordEntry.Hide()
-		gatewayDomainLabel.Hide(); gatewayDomainEntry.Hide()
+		gatewayCheckLabel.Hide()
+		useGatewayCheck.Hide()
+		gatewayUsageLabel.Hide()
+		gatewayUsageSelect.Hide()
+		gatewayHostnameLabel.Hide()
+		gatewayHostnameEntry.Hide()
+		gatewayCredentialsLabel.Hide()
+		gatewayCredentialsSelect.Hide()
+		gatewayUsernameLabel.Hide()
+		gatewayUsernameEntry.Hide()
+		gatewayPasswordLabel.Hide()
+		gatewayPasswordEntry.Hide()
+		gatewayDomainLabel.Hide()
+		gatewayDomainEntry.Hide()
+		gatewayProfileLabel.Hide()
+		gatewayProfileSelect.Hide()
+		gatewayBypassLocalLabel.Hide()
+		gatewayBypassLocalCheck.Hide()
 	}
 
 	storeTo1PasswordCheck.OnChanged = func(checked bool) {
@@ -276,17 +310,34 @@ func (w *MainWindow) showAddConnectionDialog() {
 
 	useGatewayCheck.OnChanged = func(checked bool) {
 		if checked {
-			gatewayUsageLabel.Show(); gatewayUsageSelect.Show()
-			gatewayHostnameLabel.Show(); gatewayHostnameEntry.Show()
-			gatewayCredentialsLabel.Show(); gatewayCredentialsSelect.Show()
+			gatewayUsageLabel.Show()
+			gatewayUsageSelect.Show()
+			gatewayHostnameLabel.Show()
+			gatewayHostnameEntry.Show()
+			gatewayCredentialsLabel.Show()
+			gatewayCredentialsSelect.Show()
+			gatewayProfileLabel.Show()
+			gatewayProfileSelect.Show()
+			gatewayBypassLocalLabel.Show()
+			gatewayBypassLocalCheck.Show()
 			showGatewayDifferentCreds(gatewayCredentialsSelect.Selected == "Use a different username and password")
 		} else {
-			gatewayUsageLabel.Hide(); gatewayUsageSelect.Hide()
-			gatewayHostnameLabel.Hide(); gatewayHostnameEntry.Hide()
-			gatewayCredentialsLabel.Hide(); gatewayCredentialsSelect.Hide()
-			gatewayUsernameLabel.Hide(); gatewayUsernameEntry.Hide()
-			gatewayPasswordLabel.Hide(); gatewayPasswordEntry.Hide()
-			gatewayDomainLabel.Hide(); gatewayDomainEntry.Hide()
+			gatewayUsageLabel.Hide()
+			gatewayUsageSelect.Hide()
+			gatewayHostnameLabel.Hide()
+			gatewayHostnameEntry.Hide()
+			gatewayCredentialsLabel.Hide()
+			gatewayCredentialsSelect.Hide()
+			gatewayUsernameLabel.Hide()
+			gatewayUsernameEntry.Hide()
+			gatewayPasswordLabel.Hide()
+			gatewayPasswordEntry.Hide()
+			gatewayDomainLabel.Hide()
+			gatewayDomainEntry.Hide()
+			gatewayProfileLabel.Hide()
+			gatewayProfileSelect.Hide()
+			gatewayBypassLocalLabel.Hide()
+			gatewayBypassLocalCheck.Hide()
 		}
 		formContainer.Refresh()
 	}
@@ -295,9 +346,17 @@ func (w *MainWindow) showAddConnectionDialog() {
 		if selected == "rdp" {
 			gatewayCheckLabel.Show()
 			useGatewayCheck.Show()
+			authLevelLabel.Show()
+			authLevelSelect.Show()
+			credSSPLabel.Show()
+			useCredSSPCheck.Show()
 		} else {
 			hideAllGatewayRows()
 			useGatewayCheck.SetChecked(false)
+			authLevelLabel.Hide()
+			authLevelSelect.Hide()
+			credSSPLabel.Hide()
+			useCredSSPCheck.Hide()
 		}
 		formContainer.Refresh()
 	}
@@ -313,6 +372,8 @@ func (w *MainWindow) showAddConnectionDialog() {
 		widget.NewLabelWithStyle("Domain", fyne.TextAlignTrailing, fyne.TextStyle{}), domainEntry,
 		widget.NewLabelWithStyle("Description", fyne.TextAlignTrailing, fyne.TextStyle{}), descriptionEntry,
 		widget.NewLabelWithStyle("Folder", fyne.TextAlignTrailing, fyne.TextStyle{}), folderSelect,
+		authLevelLabel, authLevelSelect,
+		credSSPLabel, useCredSSPCheck,
 		gatewayCheckLabel, useGatewayCheck,
 		gatewayUsageLabel, gatewayUsageSelect,
 		gatewayHostnameLabel, gatewayHostnameEntry,
@@ -320,6 +381,8 @@ func (w *MainWindow) showAddConnectionDialog() {
 		gatewayUsernameLabel, gatewayUsernameEntry,
 		gatewayPasswordLabel, gatewayPasswordEntry,
 		gatewayDomainLabel, gatewayDomainEntry,
+		gatewayProfileLabel, gatewayProfileSelect,
+		gatewayBypassLocalLabel, gatewayBypassLocalCheck,
 		widget.NewLabel(""), storeTo1PasswordCheck,
 		vaultLabel, vaultSelect,
 	)
@@ -340,6 +403,18 @@ func (w *MainWindow) showAddConnectionDialog() {
 		conn.Created = time.Now().Format(time.RFC3339)
 		conn.Modified = conn.Created
 
+		if conn.Protocol == models.ProtocolRDP {
+			conn.UseCredSSP = useCredSSPCheck.Checked
+			switch authLevelSelect.Selected {
+			case "Don't connect if authentication fails":
+				conn.RDPAuthenticationLevel = "fail"
+			case "Warn me if authentication fails":
+				conn.RDPAuthenticationLevel = "warn"
+			default:
+				conn.RDPAuthenticationLevel = "always"
+			}
+		}
+
 		conn.UseGateway = useGatewayCheck.Checked
 		if conn.UseGateway {
 			conn.GatewayHostname = gatewayHostnameEntry.Text
@@ -351,6 +426,12 @@ func (w *MainWindow) showAddConnectionDialog() {
 			default:
 				conn.GatewayUsageMethod = "always"
 			}
+			if gatewayProfileSelect.Selected == "Use system default gateway profile" {
+				conn.GatewayProfileUsageMethod = "default"
+			} else {
+				conn.GatewayProfileUsageMethod = "explicit"
+			}
+			conn.GatewayBypassIfLocal = gatewayBypassLocalCheck.Checked
 			switch gatewayCredentialsSelect.Selected {
 			case "Use a different username and password":
 				conn.GatewayCredentials = "different"
@@ -509,8 +590,31 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 	folderSelect := widget.NewSelect(folderNames, nil)
 	folderSelect.SetSelected(currentFolder)
 
-	// RDP Gateway widgets
-	useGatewayCheck := widget.NewCheck("Use RDP Gateway", nil)
+	// RDP-specific widgets
+	authLevelSelect := widget.NewSelect([]string{"Always connect, even if authentication fails", "Don't connect if authentication fails", "Warn me if authentication fails"}, nil)
+	switch conn.RDPAuthenticationLevel {
+	case "fail":
+		authLevelSelect.SetSelected("Don't connect if authentication fails")
+	case "warn":
+		authLevelSelect.SetSelected("Warn me if authentication fails")
+	default:
+		authLevelSelect.SetSelected("Always connect, even if authentication fails")
+	}
+	authLevelLabel := widget.NewLabelWithStyle("Auth Level", fyne.TextAlignTrailing, fyne.TextStyle{})
+
+	useCredSSPCheck := widget.NewCheck("Use CredSSP", nil)
+	useCredSSPCheck.SetChecked(conn.UseCredSSP)
+	credSSPLabel := widget.NewLabel("")
+
+	if conn.Protocol != "rdp" {
+		authLevelLabel.Hide()
+		authLevelSelect.Hide()
+		credSSPLabel.Hide()
+		useCredSSPCheck.Hide()
+	}
+
+	// RD Gateway widgets
+	useGatewayCheck := widget.NewCheck("Use RD Gateway", nil)
 	useGatewayCheck.SetChecked(conn.UseGateway)
 
 	gatewayUsageSelect := widget.NewSelect([]string{"Never", "Always", "Detect"}, nil)
@@ -553,12 +657,24 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 	gatewayDomainEntry.SetPlaceHolder("gateway domain")
 	gatewayDomainEntry.SetText(conn.GatewayDomain)
 
+	gatewayProfileSelect := widget.NewSelect([]string{"Use settings from this connection", "Use system default gateway profile"}, nil)
+	if conn.GatewayProfileUsageMethod == "default" {
+		gatewayProfileSelect.SetSelected("Use system default gateway profile")
+	} else {
+		gatewayProfileSelect.SetSelected("Use settings from this connection")
+	}
+
+	gatewayBypassLocalCheck := widget.NewCheck("Bypass gateway for local addresses", nil)
+	gatewayBypassLocalCheck.SetChecked(conn.GatewayBypassIfLocal)
+
 	gatewayUsageLabel := widget.NewLabelWithStyle("Gateway Usage", fyne.TextAlignTrailing, fyne.TextStyle{})
 	gatewayHostnameLabel := widget.NewLabelWithStyle("Gateway Hostname", fyne.TextAlignTrailing, fyne.TextStyle{})
 	gatewayCredentialsLabel := widget.NewLabelWithStyle("Gateway Credentials", fyne.TextAlignTrailing, fyne.TextStyle{})
 	gatewayUsernameLabel := widget.NewLabelWithStyle("Gateway Username", fyne.TextAlignTrailing, fyne.TextStyle{})
 	gatewayPasswordLabel := widget.NewLabelWithStyle("Gateway Password", fyne.TextAlignTrailing, fyne.TextStyle{})
 	gatewayDomainLabel := widget.NewLabelWithStyle("Gateway Domain", fyne.TextAlignTrailing, fyne.TextStyle{})
+	gatewayProfileLabel := widget.NewLabelWithStyle("Gateway Profile", fyne.TextAlignTrailing, fyne.TextStyle{})
+	gatewayBypassLocalLabel := widget.NewLabel("")
 
 	// Set initial gateway row visibility
 	if !conn.UseGateway {
@@ -574,6 +690,10 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 		gatewayPasswordEntry.Hide()
 		gatewayDomainLabel.Hide()
 		gatewayDomainEntry.Hide()
+		gatewayProfileLabel.Hide()
+		gatewayProfileSelect.Hide()
+		gatewayBypassLocalLabel.Hide()
+		gatewayBypassLocalCheck.Hide()
 	} else if conn.GatewayCredentials != "different" {
 		gatewayUsernameLabel.Hide()
 		gatewayUsernameEntry.Hide()
@@ -601,13 +721,24 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 	var formContainer *fyne.Container
 
 	hideAllGatewayRows := func() {
-		gatewayCheckLabel.Hide(); useGatewayCheck.Hide()
-		gatewayUsageLabel.Hide(); gatewayUsageSelect.Hide()
-		gatewayHostnameLabel.Hide(); gatewayHostnameEntry.Hide()
-		gatewayCredentialsLabel.Hide(); gatewayCredentialsSelect.Hide()
-		gatewayUsernameLabel.Hide(); gatewayUsernameEntry.Hide()
-		gatewayPasswordLabel.Hide(); gatewayPasswordEntry.Hide()
-		gatewayDomainLabel.Hide(); gatewayDomainEntry.Hide()
+		gatewayCheckLabel.Hide()
+		useGatewayCheck.Hide()
+		gatewayUsageLabel.Hide()
+		gatewayUsageSelect.Hide()
+		gatewayHostnameLabel.Hide()
+		gatewayHostnameEntry.Hide()
+		gatewayCredentialsLabel.Hide()
+		gatewayCredentialsSelect.Hide()
+		gatewayUsernameLabel.Hide()
+		gatewayUsernameEntry.Hide()
+		gatewayPasswordLabel.Hide()
+		gatewayPasswordEntry.Hide()
+		gatewayDomainLabel.Hide()
+		gatewayDomainEntry.Hide()
+		gatewayProfileLabel.Hide()
+		gatewayProfileSelect.Hide()
+		gatewayBypassLocalLabel.Hide()
+		gatewayBypassLocalCheck.Hide()
 	}
 
 	storeTo1PasswordCheck.OnChanged = func(checked bool) {
@@ -646,17 +777,34 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 
 	useGatewayCheck.OnChanged = func(checked bool) {
 		if checked {
-			gatewayUsageLabel.Show(); gatewayUsageSelect.Show()
-			gatewayHostnameLabel.Show(); gatewayHostnameEntry.Show()
-			gatewayCredentialsLabel.Show(); gatewayCredentialsSelect.Show()
+			gatewayUsageLabel.Show()
+			gatewayUsageSelect.Show()
+			gatewayHostnameLabel.Show()
+			gatewayHostnameEntry.Show()
+			gatewayCredentialsLabel.Show()
+			gatewayCredentialsSelect.Show()
+			gatewayProfileLabel.Show()
+			gatewayProfileSelect.Show()
+			gatewayBypassLocalLabel.Show()
+			gatewayBypassLocalCheck.Show()
 			showGatewayDifferentCreds(gatewayCredentialsSelect.Selected == "Use a different username and password")
 		} else {
-			gatewayUsageLabel.Hide(); gatewayUsageSelect.Hide()
-			gatewayHostnameLabel.Hide(); gatewayHostnameEntry.Hide()
-			gatewayCredentialsLabel.Hide(); gatewayCredentialsSelect.Hide()
-			gatewayUsernameLabel.Hide(); gatewayUsernameEntry.Hide()
-			gatewayPasswordLabel.Hide(); gatewayPasswordEntry.Hide()
-			gatewayDomainLabel.Hide(); gatewayDomainEntry.Hide()
+			gatewayUsageLabel.Hide()
+			gatewayUsageSelect.Hide()
+			gatewayHostnameLabel.Hide()
+			gatewayHostnameEntry.Hide()
+			gatewayCredentialsLabel.Hide()
+			gatewayCredentialsSelect.Hide()
+			gatewayUsernameLabel.Hide()
+			gatewayUsernameEntry.Hide()
+			gatewayPasswordLabel.Hide()
+			gatewayPasswordEntry.Hide()
+			gatewayDomainLabel.Hide()
+			gatewayDomainEntry.Hide()
+			gatewayProfileLabel.Hide()
+			gatewayProfileSelect.Hide()
+			gatewayBypassLocalLabel.Hide()
+			gatewayBypassLocalCheck.Hide()
 		}
 		formContainer.Refresh()
 	}
@@ -665,9 +813,17 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 		if selected == "rdp" {
 			gatewayCheckLabel.Show()
 			useGatewayCheck.Show()
+			authLevelLabel.Show()
+			authLevelSelect.Show()
+			credSSPLabel.Show()
+			useCredSSPCheck.Show()
 		} else {
 			hideAllGatewayRows()
 			useGatewayCheck.SetChecked(false)
+			authLevelLabel.Hide()
+			authLevelSelect.Hide()
+			credSSPLabel.Hide()
+			useCredSSPCheck.Hide()
 		}
 		formContainer.Refresh()
 	}
@@ -683,6 +839,8 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 		widget.NewLabelWithStyle("Domain", fyne.TextAlignTrailing, fyne.TextStyle{}), domainEntry,
 		widget.NewLabelWithStyle("Description", fyne.TextAlignTrailing, fyne.TextStyle{}), descriptionEntry,
 		widget.NewLabelWithStyle("Folder", fyne.TextAlignTrailing, fyne.TextStyle{}), folderSelect,
+		authLevelLabel, authLevelSelect,
+		credSSPLabel, useCredSSPCheck,
 		gatewayCheckLabel, useGatewayCheck,
 		gatewayUsageLabel, gatewayUsageSelect,
 		gatewayHostnameLabel, gatewayHostnameEntry,
@@ -690,6 +848,8 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 		gatewayUsernameLabel, gatewayUsernameEntry,
 		gatewayPasswordLabel, gatewayPasswordEntry,
 		gatewayDomainLabel, gatewayDomainEntry,
+		gatewayProfileLabel, gatewayProfileSelect,
+		gatewayBypassLocalLabel, gatewayBypassLocalCheck,
 		widget.NewLabel(""), storeTo1PasswordCheck,
 		vaultLabel, vaultSelect,
 	)
@@ -722,6 +882,18 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 		conn.Description = descriptionEntry.Text
 		conn.Modified = time.Now().Format(time.RFC3339)
 
+		if conn.Protocol == models.ProtocolRDP {
+			conn.UseCredSSP = useCredSSPCheck.Checked
+			switch authLevelSelect.Selected {
+			case "Don't connect if authentication fails":
+				conn.RDPAuthenticationLevel = "fail"
+			case "Warn me if authentication fails":
+				conn.RDPAuthenticationLevel = "warn"
+			default:
+				conn.RDPAuthenticationLevel = "always"
+			}
+		}
+
 		conn.UseGateway = useGatewayCheck.Checked
 		if conn.UseGateway {
 			conn.GatewayHostname = gatewayHostnameEntry.Text
@@ -733,6 +905,12 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 			default:
 				conn.GatewayUsageMethod = "always"
 			}
+			if gatewayProfileSelect.Selected == "Use system default gateway profile" {
+				conn.GatewayProfileUsageMethod = "default"
+			} else {
+				conn.GatewayProfileUsageMethod = "explicit"
+			}
+			conn.GatewayBypassIfLocal = gatewayBypassLocalCheck.Checked
 			switch gatewayCredentialsSelect.Selected {
 			case "Use a different username and password":
 				conn.GatewayCredentials = "different"
@@ -765,6 +943,8 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 			conn.GatewayUsername = ""
 			conn.GatewayPassword = ""
 			conn.GatewayDomain = ""
+			conn.GatewayProfileUsageMethod = ""
+			conn.GatewayBypassIfLocal = false
 		}
 
 		if port, err := strconv.Atoi(portEntry.Text); err == nil {

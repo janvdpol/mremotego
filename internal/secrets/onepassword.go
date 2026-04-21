@@ -21,9 +21,8 @@ func NewOnePasswordProvider() *OnePasswordProvider {
 
 // isOnePasswordCLIAvailable checks if the 1Password CLI (op) is installed
 func isOnePasswordCLIAvailable() bool {
-	cmd := exec.Command("op", "--version")
-	hideConsoleWindow(cmd)
-	return cmd.Run() == nil
+	_, err := exec.LookPath("op")
+	return err == nil
 }
 
 // IsEnabled returns whether 1Password CLI is available

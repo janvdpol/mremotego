@@ -552,9 +552,27 @@ func (l *Launcher) createRDPFile(conn *models.Connection, target string) (string
 	rdpContent += "redirectclipboard:i:1\r\n"
 	rdpContent += "redirectposdevices:i:0\r\n"
 	rdpContent += "autoreconnection enabled:i:1\r\n"
-	rdpContent += "authentication level:i:2\r\n"
-	rdpContent += "prompt for credentials:i:0\r\n"
+
+	// Authentication level: 0 = always connect, 1 = don't connect on failure, 2 = warn
+	authLevel := 0
+	switch conn.RDPAuthenticationLevel {
+	case "fail":
+		authLevel = 1
+	case "warn":
+		authLevel = 2
+	}
+	rdpContent += fmt.Sprintf("authentication level:i:%d\r\n", authLevel)
+
+	rdpContent += "prompt for credentials:i:1\r\n"
 	rdpContent += "negotiate security layer:i:1\r\n"
+
+	// Use CredSSP
+	credSSP := 1
+	if !conn.UseCredSSP {
+		credSSP = 0
+	}
+	rdpContent += fmt.Sprintf("use cred ssp:i:%d\r\n", credSSP)
+
 	rdpContent += "remoteapplicationmode:i:0\r\n"
 	rdpContent += "alternate shell:s:\r\n"
 	rdpContent += "shell working directory:s:\r\n"
@@ -590,12 +608,26 @@ func (l *Launcher) createRDPFile(conn *models.Connection, target string) (string
 		rdpContent += "gatewayusagemethod:i:4\r\n"
 		rdpContent += "gatewaycredentialssource:i:4\r\n"
 	}
-	rdpContent += "gatewayprofileusagemethod:i:0\r\n"
-	rdpContent += "promptcredentialonce:i:0\r\n"
+
+	// Gateway profile usage method: 0 = use default profile, 1 = use explicit settings (default)
+	profileMethod := 1
+	if conn.GatewayProfileUsageMethod == "default" {
+		profileMethod = 0
+	}
+	rdpContent += fmt.Sprintf("gatewayprofileusagemethod:i:%d\r\n", profileMethod)
+
+	rdpContent += "promptcredentialonce:i:1\r\n"
 	rdpContent += "gatewaybrokeringtype:i:0\r\n"
-	rdpContent += "use redirection server name:i:0\r\n"
+	rdpContent += "use redirection server name:i:1\r\n"
 	rdpContent += "rdgiskdcproxy:i:0\r\n"
 	rdpContent += "kdcproxyname:s:\r\n"
+
+	// Bypass gateway for local addresses
+	bypassLocal := 0
+	if conn.GatewayBypassIfLocal {
+		bypassLocal = 1
+	}
+	rdpContent += fmt.Sprintf("gatewayisbypassiflocal:i:%d\r\n", bypassLocal)
 
 	// Resolution settings
 	if conn.Resolution != "" {
@@ -661,7 +693,7 @@ func (l *Launcher) storeWindowsCredential(conn *models.Connection) error {
 	return writeWindowsCredential("TERMSRV/"+target, username, conn.Password)
 }
 
-// storeGatewayCredential stores RDP Gateway credentials in Windows Credential Manager
+// storeGatewayCredential stores RD Gateway credentials in Windows Credential Manager
 func (l *Launcher) storeGatewayCredential(conn *models.Connection) error {
 	if runtime.GOOS != "windows" {
 		return nil
