@@ -36,8 +36,15 @@ func (l *Launcher) Launch(conn *models.Connection) error {
 		return fmt.Errorf("cannot launch a folder")
 	}
 
-	// Resolve 1Password reference if needed (make a copy to avoid modifying the original)
+	// Resolve 1Password references if needed (make a copy to avoid modifying the original)
 	resolvedConn := *conn
+	if l.onePasswordProvider.IsReference(conn.Username) {
+		resolved, err := l.onePasswordProvider.ResolveSecret(conn.Username)
+		if err != nil {
+			return fmt.Errorf("failed to resolve username from 1Password: %w", err)
+		}
+		resolvedConn.Username = resolved
+	}
 	if l.onePasswordProvider.IsReference(conn.Password) {
 		resolved, err := l.onePasswordProvider.ResolveSecret(conn.Password)
 		if err != nil {
@@ -51,6 +58,22 @@ func (l *Launcher) Launch(conn *models.Connection) error {
 			resolvedConn.Password = ""
 		} else {
 			resolvedConn.Password = resolved
+		}
+	}
+	if l.onePasswordProvider.IsReference(conn.GatewayUsername) {
+		resolved, err := l.onePasswordProvider.ResolveSecret(conn.GatewayUsername)
+		if err != nil {
+			return fmt.Errorf("failed to resolve gateway username from 1Password: %w", err)
+		}
+		resolvedConn.GatewayUsername = resolved
+	}
+	if l.onePasswordProvider.IsReference(conn.GatewayPassword) {
+		resolved, err := l.onePasswordProvider.ResolveSecret(conn.GatewayPassword)
+		if err != nil {
+			fmt.Printf("Warning: Failed to resolve gateway password from 1Password: %v (gateway will prompt for credentials)\n", err)
+			resolvedConn.GatewayPassword = ""
+		} else {
+			resolvedConn.GatewayPassword = resolved
 		}
 	}
 
@@ -310,6 +333,23 @@ func (l *Launcher) launchRDP(conn *models.Connection) error {
 				fmt.Printf("Warning: Failed to store credentials: %v\n", err)
 			}
 		}
+		if conn.UseGateway && conn.GatewayHostname != "" {
+			if conn.GatewayCredentials == "different" && conn.GatewayPassword != "" {
+				if err := l.storeGatewayCredential(conn); err != nil {
+					fmt.Printf("Warning: Failed to store gateway credentials: %v\n", err)
+				}
+			} else if (conn.GatewayCredentials == "same" || conn.GatewayCredentials == "") && conn.Username != "" && conn.Password != "" {
+				gwUsername := conn.Username
+				if conn.Domain != "" {
+					gwUsername = fmt.Sprintf("%s\\%s", conn.Domain, conn.Username)
+				}
+				// mstsc looks up RD Gateway credentials by bare hostname (no TERMSRV/ prefix),
+				// unlike RDP host credentials which use TERMSRV/<host>.
+				if err := writeWindowsCredential(conn.GatewayHostname, gwUsername, conn.Password); err != nil {
+					fmt.Printf("Warning: Failed to store gateway credentials: %v\n", err)
+				}
+			}
+		}
 
 		// Create a temporary .rdp file with connection settings
 		rdpFile, err := l.createRDPFile(conn, target)
@@ -524,21 +564,80 @@ func (l *Launcher) createRDPFile(conn *models.Connection, target string) (string
 	rdpContent += "redirectclipboard:i:1\r\n"
 	rdpContent += "redirectposdevices:i:0\r\n"
 	rdpContent += "autoreconnection enabled:i:1\r\n"
-	rdpContent += "authentication level:i:2\r\n"
+
+	// Authentication level: 0 = always connect, 1 = don't connect on failure, 2 = warn
+	authLevel := 0
+	switch conn.RDPAuthenticationLevel {
+	case "fail":
+		authLevel = 1
+	case "warn":
+		authLevel = 2
+	}
+	rdpContent += fmt.Sprintf("authentication level:i:%d\r\n", authLevel)
+
 	rdpContent += "prompt for credentials:i:0\r\n"
 	rdpContent += "negotiate security layer:i:1\r\n"
+
+	// Use CredSSP
+	credSSP := 1
+	if !conn.UseCredSSP {
+		credSSP = 0
+	}
+	rdpContent += fmt.Sprintf("use cred ssp:i:%d\r\n", credSSP)
+
 	rdpContent += "remoteapplicationmode:i:0\r\n"
 	rdpContent += "alternate shell:s:\r\n"
 	rdpContent += "shell working directory:s:\r\n"
-	rdpContent += "gatewayhostname:s:\r\n"
-	rdpContent += "gatewayusagemethod:i:4\r\n"
-	rdpContent += "gatewaycredentialssource:i:4\r\n"
-	rdpContent += "gatewayprofileusagemethod:i:0\r\n"
+	if conn.UseGateway && conn.GatewayHostname != "" {
+		rdpContent += fmt.Sprintf("gatewayhostname:s:%s\r\n", conn.GatewayHostname)
+
+		usageMethod := 1 // default: always
+		switch conn.GatewayUsageMethod {
+		case "detect":
+			usageMethod = 2
+		case "never":
+			usageMethod = 4
+		}
+		rdpContent += fmt.Sprintf("gatewayusagemethod:i:%d\r\n", usageMethod)
+
+		credSource := 0 // default: NTLM password, uses Credential Manager silently
+		switch conn.GatewayCredentials {
+		case "smartcard":
+			credSource = 1
+		}
+		rdpContent += fmt.Sprintf("gatewaycredentialssource:i:%d\r\n", credSource)
+
+		if conn.GatewayCredentials == "different" && conn.GatewayUsername != "" {
+			rdpContent += fmt.Sprintf("gatewayusername:s:%s\r\n", conn.GatewayUsername)
+			if conn.GatewayDomain != "" {
+				rdpContent += fmt.Sprintf("gatewaydomain:s:%s\r\n", conn.GatewayDomain)
+			}
+		}
+	} else {
+		rdpContent += "gatewayhostname:s:\r\n"
+		rdpContent += "gatewayusagemethod:i:4\r\n"
+		rdpContent += "gatewaycredentialssource:i:4\r\n"
+	}
+
+	// Gateway profile usage method: 0 = use default profile, 1 = use explicit settings (default)
+	profileMethod := 1
+	if conn.GatewayProfileUsageMethod == "default" {
+		profileMethod = 0
+	}
+	rdpContent += fmt.Sprintf("gatewayprofileusagemethod:i:%d\r\n", profileMethod)
+
 	rdpContent += "promptcredentialonce:i:0\r\n"
 	rdpContent += "gatewaybrokeringtype:i:0\r\n"
-	rdpContent += "use redirection server name:i:0\r\n"
+	rdpContent += "use redirection server name:i:1\r\n"
 	rdpContent += "rdgiskdcproxy:i:0\r\n"
 	rdpContent += "kdcproxyname:s:\r\n"
+
+	// Bypass gateway for local addresses
+	bypassLocal := 0
+	if conn.GatewayBypassIfLocal {
+		bypassLocal = 1
+	}
+	rdpContent += fmt.Sprintf("gatewayisbypassiflocal:i:%d\r\n", bypassLocal)
 
 	// Resolution settings
 	if conn.Resolution != "" {
@@ -601,17 +700,21 @@ func (l *Launcher) storeWindowsCredential(conn *models.Connection) error {
 		username = fmt.Sprintf("%s\\%s", conn.Domain, conn.Username)
 	}
 
-	// Use cmdkey to store the credential
-	// cmdkey /generic:TERMSRV/hostname /user:username /pass:password
-	cmd := exec.Command("cmdkey", "/generic:TERMSRV/"+target, "/user:"+username, "/pass:"+conn.Password)
-	hideConsoleWindow(cmd)
+	return writeWindowsCredential("TERMSRV/"+target, username, conn.Password)
+}
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("cmdkey failed: %w, output: %s", err, string(output))
+// storeGatewayCredential stores RD Gateway credentials in Windows Credential Manager
+func (l *Launcher) storeGatewayCredential(conn *models.Connection) error {
+	if runtime.GOOS != "windows" {
+		return nil
 	}
 
-	return nil
+	username := conn.GatewayUsername
+	if conn.GatewayDomain != "" {
+		username = fmt.Sprintf("%s\\%s", conn.GatewayDomain, conn.GatewayUsername)
+	}
+
+	return writeWindowsCredential("TERMSRV/"+conn.GatewayHostname, username, conn.GatewayPassword)
 }
 
 // RemoveWindowsCredential removes RDP credentials from Windows Credential Manager
@@ -630,20 +733,7 @@ func (l *Launcher) RemoveWindowsCredential(conn *models.Connection) error {
 		target = fmt.Sprintf("%s:%d", conn.Host, port)
 	}
 
-	// Use cmdkey to delete the credential
-	// cmdkey /delete:TERMSRV/hostname
-	cmd := exec.Command("cmdkey", "/delete:TERMSRV/"+target)
-	hideConsoleWindow(cmd)
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		// Don't return error if credential doesn't exist
-		if !strings.Contains(string(output), "not found") {
-			return fmt.Errorf("cmdkey delete failed: %w, output: %s", err, string(output))
-		}
-	}
-
-	return nil
+	return deleteWindowsCredential("TERMSRV/" + target)
 }
 
 // CleanupAllCredentials removes all MremoteGO-stored credentials from Windows Credential Manager

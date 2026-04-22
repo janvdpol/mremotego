@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build:*)",
+      "Bash(make build *)",
+      "WebSearch"
+    ],
+    "additionalDirectories": [
+      "c:\\github\\jaydenthorup\\mremotego",
+      "c:\\github\\jaydenthorup\\mremotego\\bin"
+    ]
+  }
+}

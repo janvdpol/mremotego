@@ -358,8 +358,28 @@ func (w *MainWindow) updateDetailsPanel(conn *models.Connection) {
 
 	// Add action buttons
 	details.Add(widget.NewLabel(""))
-	connectBtn := widget.NewButton("🚀 Connect", func() {
-		w.connectToConnection(conn)
+
+	statusContainer := container.NewVBox()
+	var connectBtn *widget.Button
+
+	connectBtn = widget.NewButton("🚀 Connect", func() {
+		connectBtn.Disable()
+		statusContainer.RemoveAll()
+		statusContainer.Add(widget.NewProgressBarInfinite())
+		statusContainer.Refresh()
+
+		go func() {
+			err := w.launcher.Launch(conn)
+			w.window.Canvas().Content().Refresh()
+
+			if err != nil {
+				dialog.ShowError(fmt.Errorf("Failed to launch connection: %w", err), w.window)
+			}
+
+			connectBtn.Enable()
+			statusContainer.RemoveAll()
+			statusContainer.Refresh()
+		}()
 	})
 	connectBtn.Importance = widget.HighImportance
 
@@ -374,6 +394,7 @@ func (w *MainWindow) updateDetailsPanel(conn *models.Connection) {
 
 	actionButtons := container.NewGridWithColumns(3, connectBtn, editBtn, deleteBtn)
 	details.Add(actionButtons)
+	details.Add(statusContainer)
 
 	w.detailsCard.SetContent(details)
 }
@@ -443,10 +464,7 @@ func (w *MainWindow) connectToSelected() {
 func (w *MainWindow) connectToConnection(conn *models.Connection) {
 	if err := w.launcher.Launch(conn); err != nil {
 		dialog.ShowError(fmt.Errorf("Failed to launch connection: %w", err), w.window)
-		return
 	}
-
-	dialog.ShowInformation("Connected", fmt.Sprintf("Launched connection to %s", conn.Name), w.window)
 }
 
 func (w *MainWindow) editSelected() {
@@ -583,18 +601,20 @@ func (w *MainWindow) check1PasswordAuth() {
 		return
 	}
 
-	// Check if 1Password CLI is authenticated
+	// Only verify that the CLI is present in PATH. Running `op whoami` to
+	// check the live authentication status spawns a visible console window
+	// on Windows for ~2s at startup. Authentication errors surface when a
+	// reference is actually resolved in the launcher.
 	opProvider := w.launcher.GetOnePasswordProvider()
-	if opProvider.IsEnabled() && !opProvider.IsAuthenticated() {
-		// Show a helpful dialog
-		content := widget.NewLabel(opProvider.GetAuthenticationInstructions())
+	if !opProvider.IsEnabled() {
+		content := widget.NewLabel("Your connections use 1Password references (op://...) but the 1Password CLI (op) was not found in PATH. Install it and ensure it is on your PATH.")
 		content.Wrapping = fyne.TextWrapWord
 
 		scrollContainer := container.NewVScroll(content)
-		scrollContainer.SetMinSize(fyne.NewSize(600, 400))
+		scrollContainer.SetMinSize(fyne.NewSize(600, 200))
 
 		dialog.ShowCustom(
-			"1Password CLI Not Authenticated",
+			"1Password CLI Not Installed",
 			"OK",
 			scrollContainer,
 			w.window,
