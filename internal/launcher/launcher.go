@@ -333,9 +333,21 @@ func (l *Launcher) launchRDP(conn *models.Connection) error {
 				fmt.Printf("Warning: Failed to store credentials: %v\n", err)
 			}
 		}
-		if conn.UseGateway && conn.GatewayCredentials == "different" && conn.GatewayHostname != "" && conn.GatewayPassword != "" {
-			if err := l.storeGatewayCredential(conn); err != nil {
-				fmt.Printf("Warning: Failed to store gateway credentials: %v\n", err)
+		if conn.UseGateway && conn.GatewayHostname != "" {
+			if conn.GatewayCredentials == "different" && conn.GatewayPassword != "" {
+				if err := l.storeGatewayCredential(conn); err != nil {
+					fmt.Printf("Warning: Failed to store gateway credentials: %v\n", err)
+				}
+			} else if (conn.GatewayCredentials == "same" || conn.GatewayCredentials == "") && conn.Username != "" && conn.Password != "" {
+				gwUsername := conn.Username
+				if conn.Domain != "" {
+					gwUsername = fmt.Sprintf("%s\\%s", conn.Domain, conn.Username)
+				}
+				// mstsc looks up RD Gateway credentials by bare hostname (no TERMSRV/ prefix),
+				// unlike RDP host credentials which use TERMSRV/<host>.
+				if err := writeWindowsCredential(conn.GatewayHostname, gwUsername, conn.Password); err != nil {
+					fmt.Printf("Warning: Failed to store gateway credentials: %v\n", err)
+				}
 			}
 		}
 
@@ -563,7 +575,7 @@ func (l *Launcher) createRDPFile(conn *models.Connection, target string) (string
 	}
 	rdpContent += fmt.Sprintf("authentication level:i:%d\r\n", authLevel)
 
-	rdpContent += "prompt for credentials:i:1\r\n"
+	rdpContent += "prompt for credentials:i:0\r\n"
 	rdpContent += "negotiate security layer:i:1\r\n"
 
 	// Use CredSSP
@@ -588,12 +600,10 @@ func (l *Launcher) createRDPFile(conn *models.Connection, target string) (string
 		}
 		rdpContent += fmt.Sprintf("gatewayusagemethod:i:%d\r\n", usageMethod)
 
-		credSource := 1 // default: same credentials
+		credSource := 0 // default: NTLM password, uses Credential Manager silently
 		switch conn.GatewayCredentials {
-		case "different":
-			credSource = 0
 		case "smartcard":
-			credSource = 4
+			credSource = 1
 		}
 		rdpContent += fmt.Sprintf("gatewaycredentialssource:i:%d\r\n", credSource)
 
@@ -616,7 +626,7 @@ func (l *Launcher) createRDPFile(conn *models.Connection, target string) (string
 	}
 	rdpContent += fmt.Sprintf("gatewayprofileusagemethod:i:%d\r\n", profileMethod)
 
-	rdpContent += "promptcredentialonce:i:1\r\n"
+	rdpContent += "promptcredentialonce:i:0\r\n"
 	rdpContent += "gatewaybrokeringtype:i:0\r\n"
 	rdpContent += "use redirection server name:i:1\r\n"
 	rdpContent += "rdgiskdcproxy:i:0\r\n"

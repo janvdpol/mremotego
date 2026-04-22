@@ -374,8 +374,6 @@ func (w *MainWindow) updateDetailsPanel(conn *models.Connection) {
 
 			if err != nil {
 				dialog.ShowError(fmt.Errorf("Failed to launch connection: %w", err), w.window)
-			} else {
-				dialog.ShowInformation("Connected", fmt.Sprintf("Launched connection to %s", conn.Name), w.window)
 			}
 
 			connectBtn.Enable()
@@ -466,10 +464,7 @@ func (w *MainWindow) connectToSelected() {
 func (w *MainWindow) connectToConnection(conn *models.Connection) {
 	if err := w.launcher.Launch(conn); err != nil {
 		dialog.ShowError(fmt.Errorf("Failed to launch connection: %w", err), w.window)
-		return
 	}
-
-	dialog.ShowInformation("Connected", fmt.Sprintf("Launched connection to %s", conn.Name), w.window)
 }
 
 func (w *MainWindow) editSelected() {

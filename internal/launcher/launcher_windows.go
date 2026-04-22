@@ -65,7 +65,7 @@ func writeWindowsCredential(target, username, password string) error {
 	}
 
 	cred := credentialW{
-		Type:               1, // CRED_TYPE_GENERIC
+		Type:               2, // CRED_TYPE_DOMAIN_PASSWORD — required for mstsc to find credentials
 		TargetName:         targetPtr,
 		UserName:           userPtr,
 		CredentialBlobSize: passBlobSize,
@@ -91,9 +91,9 @@ func deleteWindowsCredential(target string) error {
 		return fmt.Errorf("invalid target name: %w", err)
 	}
 
-	const credTypeGeneric = 1
+	const credTypeDomainPassword = 2
 	const errorNotFound = syscall.Errno(1168) // ERROR_NOT_FOUND
-	ret, _, callErr := credDeleteW.Call(uintptr(unsafe.Pointer(targetPtr)), credTypeGeneric, 0)
+	ret, _, callErr := credDeleteW.Call(uintptr(unsafe.Pointer(targetPtr)), credTypeDomainPassword, 0)
 	if ret == 0 && callErr != errorNotFound {
 		return fmt.Errorf("CredDeleteW failed: %w", callErr)
 	}
