@@ -13,5 +13,5 @@ func hideConsoleWindow(cmd *exec.Cmd) {}
 
 func writeWindowsCredential(target, username, password string) error { return nil }
 func deleteWindowsCredential(target string) error                    { return nil }
-func waitForMstscConnected(pid int, timeout time.Duration, exited <-chan struct{}) {}
+func waitForMstscConnected(pid int, hostname string, timeout time.Duration, exited <-chan struct{}) {}
 func cleanupOrphanedCredentials()                                    {}

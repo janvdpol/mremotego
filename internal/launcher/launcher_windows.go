@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -149,17 +150,18 @@ func deleteWindowsCredential(target string) error {
 
 // enumWindowsCB is created exactly once (syscall.NewCallback has a per-process limit of 1024).
 var (
-	enumWindowsOnce  sync.Once
-	enumWindowsCB    uintptr
-	enumWindowsMu    sync.Mutex
-	enumWindowsPID   int
-	enumWindowsFound bool
+	enumWindowsOnce     sync.Once
+	enumWindowsCB       uintptr
+	enumWindowsMu       sync.Mutex
+	enumWindowsPID      int
+	enumWindowsHostname string
+	enumWindowsFound    bool
 )
 
-// waitForMstscConnected polls until mstsc for the given PID shows a
-// TscShellContainerClass window (active RDP session), mstsc exits (exited
-// closed), or timeout expires — whichever comes first.
-func waitForMstscConnected(pid int, timeout time.Duration, exited <-chan struct{}) {
+// waitForMstscConnected polls until the mstsc window title starts with hostname
+// (indicating authentication is complete and the session is active), mstsc exits
+// (exited closed), or timeout expires — whichever comes first.
+func waitForMstscConnected(pid int, hostname string, timeout time.Duration, exited <-chan struct{}) {
 	deadline := time.Now().Add(timeout)
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
@@ -171,30 +173,37 @@ func waitForMstscConnected(pid int, timeout time.Duration, exited <-chan struct{
 			if !t.Before(deadline) {
 				return
 			}
-			if hasTscShellWindow(pid) {
+			if hasMstscConnectedWindow(pid, hostname) {
 				return
 			}
 		}
 	}
 }
 
-// hasTscShellWindow returns true if there is a top-level window with class
-// "TscShellContainerClass" belonging to the given process, which mstsc creates
-// once the RDP session shell is ready.
-func hasTscShellWindow(pid int) bool {
+// hasMstscConnectedWindow returns true when a top-level window owned by pid has
+// a title that starts with hostname. mstsc sets the title to
+// "<hostname> - Remote Desktop Connection" only after authentication is complete,
+// so this is a reliable "truly connected" signal that fires after certificate
+// warnings and credential prompts have been resolved.
+func hasMstscConnectedWindow(pid int, hostname string) bool {
 	enumWindowsOnce.Do(func() {
 		user32 := syscall.NewLazyDLL("user32.dll")
 		getWindowThreadProcessId := user32.NewProc("GetWindowThreadProcessId")
-		getClassNameW := user32.NewProc("GetClassNameW")
+		getWindowTextW := user32.NewProc("GetWindowTextW")
 		enumWindowsCB = syscall.NewCallback(func(hwnd syscall.Handle, _ uintptr) uintptr {
 			var winPID uint32
 			getWindowThreadProcessId.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&winPID)))
 			if int(winPID) != enumWindowsPID {
 				return 1 // continue
 			}
-			buf := make([]uint16, 64)
-			getClassNameW.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
-			if syscall.UTF16ToString(buf) == "TscShellContainerClass" {
+			buf := make([]uint16, 512)
+			getWindowTextW.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+			title := syscall.UTF16ToString(buf)
+			// Title is "<hostname> - Remote Desktop Connection" (or locale variant) when
+			// connected. During connecting/cert-warning phases the title is
+			// "Remote Desktop Connection" with no hostname. Contains is used so the
+			// check is robust against locale differences in the suffix.
+			if len(title) > 0 && strings.Contains(strings.ToLower(title), strings.ToLower(enumWindowsHostname)) {
 				enumWindowsFound = true
 				return 0 // stop enumeration
 			}
@@ -203,10 +212,11 @@ func hasTscShellWindow(pid int) bool {
 	})
 
 	// EnumWindows calls the callback synchronously in the same goroutine, so
-	// protecting enumWindowsPID/enumWindowsFound with a mutex is sufficient.
+	// protecting the globals with a mutex is sufficient.
 	enumWindowsMu.Lock()
 	defer enumWindowsMu.Unlock()
 	enumWindowsPID = pid
+	enumWindowsHostname = hostname
 	enumWindowsFound = false
 	user32 := syscall.NewLazyDLL("user32.dll")
 	enumWindows := user32.NewProc("EnumWindows")

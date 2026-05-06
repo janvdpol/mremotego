@@ -438,14 +438,15 @@ func (l *Launcher) launchRDP(conn *models.Connection) error {
 		unregister := l.registerCleanup(cleanup)
 
 		go func() {
-			// Signal when mstsc exits (failed, cancelled, or session ended).
 			exited := make(chan struct{})
 			go func() {
 				_ = mstsc.Wait()
 				close(exited)
 			}()
-			// Clean up credentials as soon as: RDP shell is ready, mstsc exits, or 60s timeout.
-			waitForMstscConnected(mstsc.Process.Pid, 60*time.Second, exited)
+			// Wait until the mstsc window title starts with the hostname, meaning
+			// authentication is complete and credentials are no longer needed.
+			// Falls back to process exit or 60s timeout if connection never establishes.
+			waitForMstscConnected(mstsc.Process.Pid, conn.Host, 60*time.Second, exited)
 			unregister()
 			cleanup()
 		}()
