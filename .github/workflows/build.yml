@@ -53,6 +53,15 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev
 
+    - name: Install go-winres (Windows icon embedding)
+      if: matrix.os == 'windows-latest'
+      run: go install github.com/tc-hib/go-winres@latest
+
+    - name: Generate Windows resources
+      if: matrix.os == 'windows-latest'
+      working-directory: cmd/mremotego-gui
+      run: go-winres simply --icon Icon.png --arch amd64
+
     - name: Build (Windows)
       if: matrix.os == 'windows-latest'
       env:

@@ -42,3 +42,7 @@ dist/
 connections.yaml
 config.yaml
 MremoteGO-Config.xml
+
+# Generated Windows icon resources (produced by go-winres during build)
+cmd/mremotego-gui/rsrc_windows_*.syso
+cmd/mremotego-gui/icon.ico

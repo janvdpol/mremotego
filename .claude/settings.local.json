@@ -6,7 +6,8 @@
       "Bash(git *)",
       "Bash(go test *)",
       "Bash(go env *)",
-      "Bash(grep -n *)"
+      "Bash(grep -n *)",
+      "Bash(Get-Content *)"
     ]
   }
 }
