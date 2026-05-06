@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - 2026-05-06
+
+### Added
+- **Windows taskbar icon**: application icon is now embedded in the `.exe` PE resource section via `go-winres`, so it persists when the app is pinned to the Windows taskbar
+- **1Password batched resolution**: credentials from the same vault+item are now fetched in a single `op item get --format json` call instead of one call per field, reducing biometric prompts
+- **Unit tests for 1Password**: `ResolveMultiple` is covered by four tests (same-item batching, different items, non-reference passthrough, duplicate deduplication)
+
+### Changed
+- **Double-click to connect**: now uses Fyne's `DoubleTappable` interface for reliable detection; single-click still selects and shows connection details
+- Double-clicking a connection selects the item, populates the details panel, and shows the knight-rider progress bar — matching the behaviour of the Connect button
+- `build-gui.ps1` and GitHub Actions Windows build now run `go-winres` before compilation to regenerate icon resources automatically
+- Windows build now compiles from the package path (`./cmd/mremotego-gui/`) so `.syso` resource files are automatically included
+
+### Fixed
+- Double-click no longer silently fails when clicking an already-selected tree item (root cause: Fyne fires `Tapped` *or* `DoubleTapped`, never both)
+- Single-click selection broke when `DoubleTappable` was added; fixed by implementing both `Tappable` and `DoubleTappable` on the tree node widget and driving `tree.Select` explicitly
+
 ## [1.0.4] - 2026-01-28
 
 ### Fixed

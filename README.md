@@ -74,9 +74,9 @@ Simply run the executable without arguments:
 
 **Connecting:**
 
-- **Double-click** a connection in the tree
-- **Right-click** → **Connect**
-- Select and press **Enter**
+- **Double-click** a connection in the tree (shows details and starts connecting)
+- Select a connection, then click the **🚀 Connect** button in the details panel
+- Select a connection, then click the **▶** toolbar button
 
 **Searching:**
 
@@ -285,12 +285,15 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [x] Core connection management (SSH, RDP, VNC, HTTP, Telnet)
 - [x] GUI with tree view and search
 - [x] 1Password integration with special character support
+- [x] 1Password batched credential resolution (single prompt per vault+item)
 - [x] AES-256-GCM password encryption
 - [x] Cross-platform builds (Windows, Linux, macOS ARM64)
 - [x] CLI mode for automation
 - [x] Nested folder support with unlimited depth
 - [x] Import from mRemoteNG XML
 - [x] GitHub Actions CI/CD with automated releases
+- [x] Double-click to connect with progress indicator
+- [x] Windows taskbar icon embedded in executable
 
 ### 🚧 In Progress
 - [ ] Improved settings panel with more options
@@ -338,7 +341,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [ ] Connection macros/automation
 
 #### Platform-Specific
-- [ ] Windows: Hide console window on launch
 - [ ] Linux: System tray integration
 - [ ] macOS: Menu bar app mode
 
