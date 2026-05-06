@@ -1,21 +1,39 @@
 package secrets
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os/exec"
 	"strings"
 )
 
+type opField struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+// commandRunner executes a named command and returns its combined output.
+// Extracted so ResolveMultiple can be tested without a real op binary.
+type commandRunner func(name string, args ...string) ([]byte, error)
+
+func realCommandRunner(name string, args ...string) ([]byte, error) {
+	cmd := exec.Command(name, args...)
+	hideConsoleWindow(cmd)
+	return cmd.CombinedOutput()
+}
+
 // OnePasswordProvider handles retrieving secrets from 1Password CLI
 type OnePasswordProvider struct {
 	enabled bool
+	run     commandRunner
 }
 
 // NewOnePasswordProvider creates a new 1Password provider
 func NewOnePasswordProvider() *OnePasswordProvider {
 	return &OnePasswordProvider{
 		enabled: isOnePasswordCLIAvailable(),
+		run:     realCommandRunner,
 	}
 }
 
@@ -30,83 +48,9 @@ func (p *OnePasswordProvider) IsEnabled() bool {
 	return p.enabled
 }
 
-// IsAuthenticated checks if the user is currently signed in to 1Password CLI
-func (p *OnePasswordProvider) IsAuthenticated() bool {
-	if !p.enabled {
-		return false
-	}
-
-	cmd := exec.Command("op", "whoami")
-	hideConsoleWindow(cmd)
-	return cmd.Run() == nil
-}
-
-// GetAuthenticationInstructions returns instructions for authenticating with 1Password CLI
-func (p *OnePasswordProvider) GetAuthenticationInstructions() string {
-	return `1Password CLI needs authentication.
-
-✅ OPTION 1: Launch from same terminal (Session Token)
-If you run "op signin" in PowerShell, then launch MremoteGO from that SAME terminal:
-  Invoke-Expression $(op signin)
-  .\mremotego.exe
-The GUI will inherit your session token and "op://" passwords will work!
-
-✅ OPTION 2: Desktop App Integration (Recommended - Persistent Auth)
-1. Open the 1Password desktop app
-2. Sign in if you haven't already
-3. Go to Settings → Developer
-4. Enable "Integrate with 1Password CLI"
-5. Restart MremoteGO
-
-This allows the CLI to use your desktop app session with biometric unlock.
-No terminal commands needed - it just works!
-
-────────────────────────────────────────────────────
-
-Alternative (not recommended):
-You can set the OP_SERVICE_ACCOUNT_TOKEN environment variable for automation,
-but this requires a 1Password service account (business/team plans only).`
-}
-
 // IsReference checks if a string is a 1Password reference (starts with op://)
 func (p *OnePasswordProvider) IsReference(value string) bool {
 	return strings.HasPrefix(value, "op://")
-}
-
-// ResolveSecret retrieves a secret from 1Password using the CLI
-// Reference format: op://vault/item/field
-// Example: op://Private/MyServer/password
-func (p *OnePasswordProvider) ResolveSecret(reference string) (string, error) {
-	if !p.enabled {
-		return "", fmt.Errorf("1Password CLI is not available")
-	}
-
-	if !p.IsReference(reference) {
-		return "", fmt.Errorf("not a 1Password reference: %s", reference)
-	}
-
-	// Parse the reference to extract vault, item, and field
-	// op://vault/item/field
-	vault, item, field, err := p.parseReference(reference)
-	if err != nil {
-		return "", fmt.Errorf("invalid reference format: %w", err)
-	}
-
-	// Use 'op item get' which handles special characters in item names
-	// This is more robust than 'op read' for items with parentheses, spaces, etc.
-	cmd := exec.Command("op", "item", "get", item, "--vault="+vault, "--fields", "label="+field, "--reveal")
-	hideConsoleWindow(cmd)
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		// Provide helpful error message based on the output
-		errorMsg := string(output)
-		return "", fmt.Errorf("failed to retrieve secret: %s", strings.TrimSpace(errorMsg))
-	}
-
-	// Trim whitespace and return
-	secret := strings.TrimSpace(string(output))
-	return secret, nil
 }
 
 // parseReference parses a 1Password reference into vault, item, and field
@@ -140,24 +84,82 @@ func (p *OnePasswordProvider) parseReference(reference string) (string, string, 
 	return vault, decodedItem, field, nil
 }
 
-// ResolveIfReference resolves a value if it's a 1Password reference, otherwise returns it as-is
-// ResolveIfReference resolves a value if it's a 1Password reference, otherwise returns it as-is
-// Note: This uses the 1Password CLI which will prompt for biometric auth if needed
-// TODO: Consider migrating to https://github.com/1Password/onepassword-sdk-go for better integration
-func (p *OnePasswordProvider) ResolveIfReference(value string) string {
-	if !p.IsReference(value) {
-		return value
+// ResolveMultiple resolves a slice of 1Password references. References from the
+// same vault+item are fetched in a single op call. Non-references are returned unchanged.
+// Returns a map of reference → value.
+func (p *OnePasswordProvider) ResolveMultiple(refs []string) (map[string]string, error) {
+	if !p.enabled {
+		return nil, fmt.Errorf("1Password CLI is not available")
 	}
 
-	resolved, err := p.ResolveSecret(value)
-	if err != nil {
-		// If resolution fails, return empty string
-		// This prevents exposing the reference format
-		fmt.Printf("Warning: Failed to resolve 1Password reference: %v\n", err)
-		return ""
+	result := make(map[string]string, len(refs))
+
+	type itemKey struct{ vault, item string }
+	type fieldReq struct{ ref, field string }
+
+	grouped := make(map[itemKey][]fieldReq)
+	seen := make(map[string]bool)
+
+	for _, ref := range refs {
+		if !p.IsReference(ref) {
+			result[ref] = ref
+			continue
+		}
+		if seen[ref] {
+			continue
+		}
+		seen[ref] = true
+
+		vault, item, field, err := p.parseReference(ref)
+		if err != nil {
+			return nil, fmt.Errorf("invalid 1Password reference %q: %w", ref, err)
+		}
+		key := itemKey{vault, item}
+		grouped[key] = append(grouped[key], fieldReq{ref: ref, field: field})
 	}
 
-	return resolved
+	for key, fields := range grouped {
+		labels := make([]string, len(fields))
+		for i, f := range fields {
+			labels[i] = "label=" + f.field
+		}
+
+		output, err := p.run("op", "item", "get", key.item,
+			"--vault="+key.vault,
+			"--fields", strings.Join(labels, ","),
+			"--format", "json",
+			"--reveal",
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve secrets for item %q in vault %q: %s", key.item, key.vault, strings.TrimSpace(string(output)))
+		}
+
+		// op returns an array when multiple fields are requested, or a single object for one field.
+		// Normalise to a slice in both cases.
+		var parsed []opField
+		if err := json.Unmarshal(output, &parsed); err != nil {
+			var single opField
+			if err2 := json.Unmarshal(output, &single); err2 != nil {
+				return nil, fmt.Errorf("failed to parse op output for item %q: %w", key.item, err)
+			}
+			parsed = []opField{single}
+		}
+
+		byLabel := make(map[string]string, len(parsed))
+		for _, f := range parsed {
+			byLabel[strings.ToLower(f.Label)] = f.Value
+		}
+
+		for _, f := range fields {
+			val, ok := byLabel[strings.ToLower(f.field)]
+			if !ok {
+				return nil, fmt.Errorf("field %q not found in 1Password item %q (vault %q)", f.field, key.item, key.vault)
+			}
+			result[f.ref] = val
+		}
+	}
+
+	return result, nil
 }
 
 // CheckItemExists checks if an item with the given title exists in the vault
@@ -262,24 +264,3 @@ func (p *OnePasswordProvider) CreateItem(vault, title, username, password string
 	return reference, nil
 }
 
-// ListVaults returns a list of available 1Password vaults
-func (p *OnePasswordProvider) ListVaults() ([]string, error) {
-	if !p.enabled {
-		return nil, fmt.Errorf("1Password CLI is not available")
-	}
-
-	cmd := exec.Command("op", "vault", "list", "--format=json")
-	hideConsoleWindow(cmd)
-
-	_, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to list vaults: %w", err)
-	}
-
-	// Simple parsing - extract vault names (this is a simplified version)
-	// In production, you'd want to parse the JSON properly
-	vaults := []string{"Private", "DevOps", "Employee"} // Default common vaults
-
-	// For now, return common vaults. You could parse JSON if needed
-	return vaults, nil
-}

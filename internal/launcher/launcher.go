@@ -36,46 +36,42 @@ func (l *Launcher) Launch(conn *models.Connection) error {
 		return fmt.Errorf("cannot launch a folder")
 	}
 
-	// Resolve 1Password references if needed (make a copy to avoid modifying the original)
+	// Resolve 1Password references in a single batched call (grouped by vault+item)
+	// so that credentials from the same 1Password item require only one biometric prompt.
 	resolvedConn := *conn
-	if l.onePasswordProvider.IsReference(conn.Username) {
-		resolved, err := l.onePasswordProvider.ResolveSecret(conn.Username)
-		if err != nil {
-			return fmt.Errorf("failed to resolve username from 1Password: %w", err)
+	opRefs := make([]string, 0, 4)
+	for _, v := range []string{conn.Username, conn.Password, conn.GatewayUsername, conn.GatewayPassword} {
+		if l.onePasswordProvider.IsReference(v) {
+			opRefs = append(opRefs, v)
 		}
-		resolvedConn.Username = resolved
 	}
-	if l.onePasswordProvider.IsReference(conn.Password) {
-		resolved, err := l.onePasswordProvider.ResolveSecret(conn.Password)
+
+	var opValues map[string]string
+	if len(opRefs) > 0 {
+		var err error
+		opValues, err = l.onePasswordProvider.ResolveMultiple(opRefs)
 		if err != nil {
-			// For RDP, we can continue without a password (will prompt)
-			// For other protocols that require a password, return the error
-			if conn.Protocol != models.ProtocolRDP {
-				return fmt.Errorf("failed to resolve password from 1Password: %w", err)
+			if conn.Protocol == models.ProtocolRDP {
+				fmt.Printf("Warning: Failed to resolve 1Password references: %v (RDP will prompt for credentials)\n", err)
+			} else {
+				return fmt.Errorf("failed to resolve 1Password references: %w", err)
 			}
-			// RDP: Clear the password so it doesn't try to use the op:// reference
-			fmt.Printf("Warning: Failed to resolve password from 1Password: %v (RDP will prompt for credentials)\n", err)
-			resolvedConn.Password = ""
-		} else {
-			resolvedConn.Password = resolved
 		}
 	}
-	if l.onePasswordProvider.IsReference(conn.GatewayUsername) {
-		resolved, err := l.onePasswordProvider.ResolveSecret(conn.GatewayUsername)
-		if err != nil {
-			return fmt.Errorf("failed to resolve gateway username from 1Password: %w", err)
+
+	apply := func(v string) string {
+		if l.onePasswordProvider.IsReference(v) {
+			if resolved, ok := opValues[v]; ok {
+				return resolved
+			}
+			return ""
 		}
-		resolvedConn.GatewayUsername = resolved
+		return v
 	}
-	if l.onePasswordProvider.IsReference(conn.GatewayPassword) {
-		resolved, err := l.onePasswordProvider.ResolveSecret(conn.GatewayPassword)
-		if err != nil {
-			fmt.Printf("Warning: Failed to resolve gateway password from 1Password: %v (gateway will prompt for credentials)\n", err)
-			resolvedConn.GatewayPassword = ""
-		} else {
-			resolvedConn.GatewayPassword = resolved
-		}
-	}
+	resolvedConn.Username = apply(conn.Username)
+	resolvedConn.Password = apply(conn.Password)
+	resolvedConn.GatewayUsername = apply(conn.GatewayUsername)
+	resolvedConn.GatewayPassword = apply(conn.GatewayPassword)
 
 	switch resolvedConn.Protocol {
 	case models.ProtocolSSH:

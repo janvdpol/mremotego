@@ -379,15 +379,14 @@ func (w *MainWindow) updateDetailsPanel(conn *models.Connection) {
 
 		go func() {
 			err := w.launcher.Launch(conn)
-			w.window.Canvas().Content().Refresh()
-
-			if err != nil {
-				dialog.ShowError(fmt.Errorf("Failed to launch connection: %w", err), w.window)
-			}
-
-			connectBtn.Enable()
-			statusContainer.RemoveAll()
-			statusContainer.Refresh()
+			fyne.Do(func() {
+				statusContainer.RemoveAll()
+				statusContainer.Refresh()
+				connectBtn.Enable()
+				if err != nil {
+					dialog.ShowError(fmt.Errorf("Failed to launch connection: %w", err), w.window)
+				}
+			})
 		}()
 	})
 	connectBtn.Importance = widget.HighImportance
@@ -471,9 +470,14 @@ func (w *MainWindow) connectToSelected() {
 }
 
 func (w *MainWindow) connectToConnection(conn *models.Connection) {
-	if err := w.launcher.Launch(conn); err != nil {
-		dialog.ShowError(fmt.Errorf("Failed to launch connection: %w", err), w.window)
-	}
+	go func() {
+		err := w.launcher.Launch(conn)
+		if err != nil {
+			fyne.Do(func() {
+				dialog.ShowError(fmt.Errorf("Failed to launch connection: %w", err), w.window)
+			})
+		}
+	}()
 }
 
 func (w *MainWindow) editSelected() {
