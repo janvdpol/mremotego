@@ -2,12 +2,15 @@ package launcher
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/jaydenthorup/mremotego/internal/secrets"
 	"github.com/jaydenthorup/mremotego/pkg/models"
@@ -16,18 +19,76 @@ import (
 // Launcher handles launching connections
 type Launcher struct {
 	onePasswordProvider *secrets.OnePasswordProvider
+	mu       sync.Mutex
+	cleanups map[uint64]func()
+	nextID   uint64
 }
 
 // NewLauncher creates a new launcher
 func NewLauncher() *Launcher {
 	return &Launcher{
 		onePasswordProvider: secrets.NewOnePasswordProvider(),
+		cleanups:            make(map[uint64]func()),
 	}
 }
 
 // GetOnePasswordProvider returns the 1Password provider for checking authentication status
 func (l *Launcher) GetOnePasswordProvider() *secrets.OnePasswordProvider {
 	return l.onePasswordProvider
+}
+
+// registerCleanup records fn to be called when the session ends or when Cleanup is called
+// on app exit. Returns an unregister function that removes the entry once the session
+// ends naturally (so Cleanup skips already-finished sessions).
+func (l *Launcher) registerCleanup(fn func()) (unregister func()) {
+	l.mu.Lock()
+	id := l.nextID
+	l.nextID++
+	l.cleanups[id] = fn
+	l.mu.Unlock()
+
+	return func() {
+		l.mu.Lock()
+		delete(l.cleanups, id)
+		l.mu.Unlock()
+	}
+}
+
+// Cleanup runs all pending session cleanups. Call this when the application is closing
+// to ensure credentials and temp files are removed even if sessions are still open.
+func (l *Launcher) Cleanup() {
+	l.mu.Lock()
+	fns := make([]func(), 0, len(l.cleanups))
+	for _, fn := range l.cleanups {
+		fns = append(fns, fn)
+	}
+	l.cleanups = make(map[uint64]func())
+	l.mu.Unlock()
+
+	for _, fn := range fns {
+		fn()
+	}
+}
+
+// CleanupOnStartup removes leftovers from a previous run that may have been
+// skipped if the process crashed: stale .rdp temp files and any Credential
+// Manager entries tagged with the mremotego comment.
+func CleanupOnStartup() {
+	cleanupStaleTempFiles()
+	cleanupOrphanedCredentials() // no-op on non-Windows
+}
+
+func cleanupStaleTempFiles() {
+	dir := filepath.Join(os.TempDir(), "mremotego")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return // directory doesn't exist yet — nothing to clean
+	}
+	for _, e := range entries {
+		if !e.IsDir() && filepath.Ext(e.Name()) == ".rdp" {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
 }
 
 // Launch launches a connection based on its protocol
@@ -318,17 +379,23 @@ func (l *Launcher) launchRDP(conn *models.Connection) error {
 
 	switch runtime.GOOS {
 	case "windows":
-		// Store credentials in Windows Credential Manager if password is provided
+		// Store credentials and track every target we write so we can remove
+		// them from Credential Manager once mstsc exits.
+		var credTargets []string
+
 		if conn.Username != "" && conn.Password != "" {
 			if err := l.storeWindowsCredential(conn); err != nil {
-				// Continue anyway - mstsc will prompt if credentials aren't stored
 				fmt.Printf("Warning: Failed to store credentials: %v\n", err)
+			} else {
+				credTargets = append(credTargets, "TERMSRV/"+target)
 			}
 		}
 		if conn.UseGateway && conn.GatewayHostname != "" {
 			if conn.GatewayCredentials == "different" && conn.GatewayPassword != "" {
 				if err := l.storeGatewayCredential(conn); err != nil {
 					fmt.Printf("Warning: Failed to store gateway credentials: %v\n", err)
+				} else {
+					credTargets = append(credTargets, "TERMSRV/"+conn.GatewayHostname)
 				}
 			} else if (conn.GatewayCredentials == "same" || conn.GatewayCredentials == "") && conn.Username != "" && conn.Password != "" {
 				gwUsername := conn.Username
@@ -339,19 +406,51 @@ func (l *Launcher) launchRDP(conn *models.Connection) error {
 				// unlike RDP host credentials which use TERMSRV/<host>.
 				if err := writeWindowsCredential(conn.GatewayHostname, gwUsername, conn.Password); err != nil {
 					fmt.Printf("Warning: Failed to store gateway credentials: %v\n", err)
+				} else {
+					credTargets = append(credTargets, conn.GatewayHostname)
 				}
 			}
 		}
 
-		// Create a temporary .rdp file with connection settings
 		rdpFile, err := l.createRDPFile(conn, target)
 		if err != nil {
 			return fmt.Errorf("failed to create RDP file: %w", err)
 		}
 
-		// Launch mstsc with the RDP file
-		cmd = exec.Command("mstsc", rdpFile)
-		// Don't hide mstsc - it's a GUI application we want to see
+		mstsc := exec.Command("mstsc", rdpFile)
+		mstsc.Stdin = nil
+		mstsc.Stdout = nil
+		mstsc.Stderr = nil
+		if err := mstsc.Start(); err != nil {
+			for _, t := range credTargets {
+				_ = deleteWindowsCredential(t)
+			}
+			_ = os.Remove(rdpFile)
+			return fmt.Errorf("failed to start mstsc: %w", err)
+		}
+
+		cleanup := func() {
+			for _, t := range credTargets {
+				_ = deleteWindowsCredential(t)
+			}
+			_ = os.Remove(rdpFile)
+		}
+		unregister := l.registerCleanup(cleanup)
+
+		go func() {
+			// Signal when mstsc exits (failed, cancelled, or session ended).
+			exited := make(chan struct{})
+			go func() {
+				_ = mstsc.Wait()
+				close(exited)
+			}()
+			// Clean up credentials as soon as: RDP shell is ready, mstsc exits, or 60s timeout.
+			waitForMstscConnected(mstsc.Process.Pid, 60*time.Second, exited)
+			unregister()
+			cleanup()
+		}()
+
+		return nil
 
 	case "darwin":
 		// Use Microsoft Remote Desktop on macOS
@@ -506,11 +605,10 @@ func (l *Launcher) createRDPFile(conn *models.Connection, target string) (string
 		return "", fmt.Errorf("failed to create temp directory: %w", err)
 	}
 
-	// Sanitize connection name for filename (remove invalid characters)
+	// Unique suffix prevents collisions when the same connection is opened
+	// multiple times concurrently.
 	safeName := sanitizeFilename(conn.Name)
-
-	// Create RDP file with .rdp extension
-	rdpPath := filepath.Join(tempDir, safeName+".rdp")
+	rdpPath := filepath.Join(tempDir, fmt.Sprintf("%s-%08x.rdp", safeName, rand.Uint32()))
 
 	// Build RDP file content (UTF-8 encoding)
 	rdpContent := fmt.Sprintf("full address:s:%s\r\n", target)

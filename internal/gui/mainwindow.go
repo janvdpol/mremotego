@@ -595,6 +595,10 @@ func (w *MainWindow) showAbout() {
 
 // Show displays the main window
 func (w *MainWindow) Show() {
+	w.window.SetCloseIntercept(func() {
+		w.launcher.Cleanup()
+		w.app.Quit()
+	})
 	w.window.Show()
 
 	// Check 1Password CLI authentication status after window is shown

@@ -13,6 +13,7 @@ import (
 	"github.com/jaydenthorup/mremotego/cmd/mremotego/cmd"
 	"github.com/jaydenthorup/mremotego/internal/config"
 	"github.com/jaydenthorup/mremotego/internal/gui"
+	"github.com/jaydenthorup/mremotego/internal/launcher"
 )
 
 func main() {
@@ -28,6 +29,8 @@ func main() {
 }
 
 func runGUI() {
+	launcher.CleanupOnStartup()
+
 	// Set locale to avoid warnings on non-standard systems
 	if os.Getenv("LANG") == "" || os.Getenv("LANG") == "C" {
 		os.Setenv("LANG", "en_US.UTF-8")
