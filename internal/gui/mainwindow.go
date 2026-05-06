@@ -3,6 +3,7 @@ package gui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -28,9 +29,11 @@ type MainWindow struct {
 	searchEntry    *widget.Entry
 	allConnections []*models.Connection
 	filteredIDs    []string
-	statusLabel    *widget.Label
-	activeSessions *widget.List
-	sessionList    []*models.Connection
+	statusLabel      *widget.Label
+	activeSessions   *widget.List
+	sessionList      []*models.Connection
+	lastSelectedUID  string
+	lastSelectedTime time.Time
 }
 
 // NewMainWindow creates a new main window
@@ -253,6 +256,12 @@ func (w *MainWindow) createConnectionTree() *widget.Tree {
 
 	tree.OnSelected = func(uid string) {
 		if conn, exists := w.connectionData[uid]; exists {
+			now := time.Now()
+			if uid == w.lastSelectedUID && now.Sub(w.lastSelectedTime) < 500*time.Millisecond && !conn.IsFolder() {
+				w.connectToConnection(conn)
+			}
+			w.lastSelectedUID = uid
+			w.lastSelectedTime = now
 			w.selectedConn = conn
 			w.updateDetailsPanel(conn)
 		}
