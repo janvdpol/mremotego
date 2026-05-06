@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-05-06
+
+### Added
+- **Automatic RDP session cleanup**: credentials and temporary `.rdp` files created by MRemoteGo are now fully cleaned up at the right moment — whichever comes first: immediately after authentication completes (detected by mstsc's window title containing the hostname), when the session closes, when the app is closed, or on next startup after a crash. Every credential is tagged with `Comment = "Managed by MRemoteGo"` so orphaned entries can be identified and removed. Multiple concurrent RDP sessions are tracked and cleaned up independently.
+
 ## [1.1.1] - 2026-05-06
 
 ### Added
