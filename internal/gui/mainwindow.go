@@ -3,7 +3,6 @@ package gui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -29,11 +28,11 @@ type MainWindow struct {
 	searchEntry    *widget.Entry
 	allConnections []*models.Connection
 	filteredIDs    []string
-	statusLabel      *widget.Label
-	activeSessions   *widget.List
-	sessionList      []*models.Connection
-	lastSelectedUID  string
-	lastSelectedTime time.Time
+	statusLabel           *widget.Label
+	activeSessions        *widget.List
+	sessionList           []*models.Connection
+	detailsConnectBtn     *widget.Button
+	detailsStatusContainer *fyne.Container
 }
 
 // NewMainWindow creates a new main window
@@ -239,7 +238,7 @@ func (w *MainWindow) createConnectionTree() *widget.Tree {
 		},
 		// Create
 		func(branch bool) fyne.CanvasObject {
-			return widget.NewLabel("Template")
+			return newNodeLabel()
 		},
 		// Update
 		func(uid string, branch bool, obj fyne.CanvasObject) {
@@ -247,21 +246,22 @@ func (w *MainWindow) createConnectionTree() *widget.Tree {
 			if !exists {
 				return
 			}
-
-			label := obj.(*widget.Label)
-			icon := w.getConnectionIcon(conn)
-			label.SetText(icon + " " + conn.Name)
+			n := obj.(*nodeLabel)
+			n.SetText(w.getConnectionIcon(conn) + " " + conn.Name)
+			n.onTap = func() {
+				w.tree.Select(uid)
+				w.window.Canvas().Focus(w.tree)
+			}
+			if !conn.IsFolder() {
+				n.onDoubleTap = func() { w.connectWithProgress(conn) }
+			} else {
+				n.onDoubleTap = nil
+			}
 		},
 	)
 
 	tree.OnSelected = func(uid string) {
 		if conn, exists := w.connectionData[uid]; exists {
-			now := time.Now()
-			if uid == w.lastSelectedUID && now.Sub(w.lastSelectedTime) < 500*time.Millisecond && !conn.IsFolder() {
-				w.connectToConnection(conn)
-			}
-			w.lastSelectedUID = uid
-			w.lastSelectedTime = now
 			w.selectedConn = conn
 			w.updateDetailsPanel(conn)
 		}
@@ -368,28 +368,11 @@ func (w *MainWindow) updateDetailsPanel(conn *models.Connection) {
 	// Add action buttons
 	details.Add(widget.NewLabel(""))
 
-	statusContainer := container.NewVBox()
-	var connectBtn *widget.Button
-
-	connectBtn = widget.NewButton("🚀 Connect", func() {
-		connectBtn.Disable()
-		statusContainer.RemoveAll()
-		statusContainer.Add(widget.NewProgressBarInfinite())
-		statusContainer.Refresh()
-
-		go func() {
-			err := w.launcher.Launch(conn)
-			fyne.Do(func() {
-				statusContainer.RemoveAll()
-				statusContainer.Refresh()
-				connectBtn.Enable()
-				if err != nil {
-					dialog.ShowError(fmt.Errorf("Failed to launch connection: %w", err), w.window)
-				}
-			})
-		}()
+	w.detailsStatusContainer = container.NewVBox()
+	w.detailsConnectBtn = widget.NewButton("🚀 Connect", func() {
+		w.connectWithProgress(conn)
 	})
-	connectBtn.Importance = widget.HighImportance
+	w.detailsConnectBtn.Importance = widget.HighImportance
 
 	editBtn := widget.NewButton("✏️ Edit", func() {
 		w.showEditConnectionDialog(conn)
@@ -400,9 +383,9 @@ func (w *MainWindow) updateDetailsPanel(conn *models.Connection) {
 	})
 	deleteBtn.Importance = widget.DangerImportance
 
-	actionButtons := container.NewGridWithColumns(3, connectBtn, editBtn, deleteBtn)
+	actionButtons := container.NewGridWithColumns(3, w.detailsConnectBtn, editBtn, deleteBtn)
 	details.Add(actionButtons)
-	details.Add(statusContainer)
+	details.Add(w.detailsStatusContainer)
 
 	w.detailsCard.SetContent(details)
 }
@@ -477,6 +460,32 @@ func (w *MainWindow) connectToConnection(conn *models.Connection) {
 				dialog.ShowError(fmt.Errorf("Failed to launch connection: %w", err), w.window)
 			})
 		}
+	}()
+}
+
+func (w *MainWindow) connectWithProgress(conn *models.Connection) {
+	if w.detailsConnectBtn != nil {
+		w.detailsConnectBtn.Disable()
+	}
+	if w.detailsStatusContainer != nil {
+		w.detailsStatusContainer.RemoveAll()
+		w.detailsStatusContainer.Add(widget.NewProgressBarInfinite())
+		w.detailsStatusContainer.Refresh()
+	}
+	go func() {
+		err := w.launcher.Launch(conn)
+		fyne.Do(func() {
+			if w.detailsStatusContainer != nil {
+				w.detailsStatusContainer.RemoveAll()
+				w.detailsStatusContainer.Refresh()
+			}
+			if w.detailsConnectBtn != nil {
+				w.detailsConnectBtn.Enable()
+			}
+			if err != nil {
+				dialog.ShowError(fmt.Errorf("Failed to launch connection: %w", err), w.window)
+			}
+		})
 	}()
 }
 
@@ -633,9 +642,54 @@ func (w *MainWindow) check1PasswordAuth() {
 			w.window,
 		)
 	}
-} // Reload refreshes the window with the loaded config
+}
+
+// Reload refreshes the window with the loaded config
 func (w *MainWindow) Reload() {
 	w.buildConnectionMap()
 	w.tree.Refresh()
 	w.updateStatus()
+}
+
+// nodeLabel is the content widget for each tree node.
+// It must implement both Tappable and DoubleTappable: once a widget implements
+// DoubleTappable, Fyne routes the initial tap to it and never lets it reach
+// the parent treeNode, so we have to drive tree.Select ourselves via onTap.
+type nodeLabel struct {
+	widget.BaseWidget
+	lbl         *widget.Label
+	onTap       func()
+	onDoubleTap func()
+}
+
+func newNodeLabel() *nodeLabel {
+	n := &nodeLabel{lbl: widget.NewLabel("")}
+	n.ExtendBaseWidget(n)
+	return n
+}
+
+func (n *nodeLabel) CreateRenderer() fyne.WidgetRenderer {
+	return widget.NewSimpleRenderer(n.lbl)
+}
+
+func (n *nodeLabel) SetText(text string) {
+	n.lbl.SetText(text)
+}
+
+func (n *nodeLabel) Tapped(*fyne.PointEvent) {
+	if n.onTap != nil {
+		n.onTap()
+	}
+}
+
+func (n *nodeLabel) DoubleTapped(*fyne.PointEvent) {
+	// Fyne fires Tapped OR DoubleTapped — never both for the same click sequence.
+	// Run onTap first so the item is selected and the details panel is populated
+	// before the connection starts.
+	if n.onTap != nil {
+		n.onTap()
+	}
+	if n.onDoubleTap != nil {
+		n.onDoubleTap()
+	}
 }
