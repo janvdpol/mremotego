@@ -51,11 +51,7 @@ func (l *Launcher) Launch(conn *models.Connection) error {
 		var err error
 		opValues, err = l.onePasswordProvider.ResolveMultiple(opRefs)
 		if err != nil {
-			if conn.Protocol == models.ProtocolRDP {
-				fmt.Printf("Warning: Failed to resolve 1Password references: %v (RDP will prompt for credentials)\n", err)
-			} else {
-				return fmt.Errorf("failed to resolve 1Password references: %w", err)
-			}
+			return fmt.Errorf("failed to resolve 1Password references: %w", err)
 		}
 	}
 
