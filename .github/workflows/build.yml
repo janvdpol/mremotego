@@ -45,7 +45,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6.4.0
       with:
-        go-version: '1.23'
+        go-version: '1.24'
 
     - name: Install Linux dependencies
       if: matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm'
