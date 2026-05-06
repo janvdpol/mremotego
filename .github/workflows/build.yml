@@ -58,14 +58,14 @@ jobs:
       env:
         CGO_ENABLED: 1
       run: |
-        go build -ldflags "-H windowsgui" -o ${{ matrix.name }} ./cmd/mremotego-gui
+        go build -ldflags "-s -H windowsgui" -o ${{ matrix.name }} ./cmd/mremotego-gui
 
     - name: Build (Linux)
       if: matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm'
       env:
         CGO_ENABLED: 1
       run: |
-        go build -o ${{ matrix.name }} ./cmd/mremotego-gui
+        go build -ldflags "-s" -o ${{ matrix.name }} ./cmd/mremotego-gui
 
     - name: Build (macOS)
       if: startsWith(matrix.os, 'macos')
