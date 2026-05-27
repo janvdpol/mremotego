@@ -23,6 +23,8 @@ choco install op
 2. Go to **Settings → Developer**
 3. Enable **"Integrate with 1Password CLI"**
 
+![alt text](1password_integrate_CLI.png)
+
 ### 3. Verify Setup
 
 ```powershell
