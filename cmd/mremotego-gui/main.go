@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -79,12 +80,62 @@ func runGUI() {
 		}
 		mainWindow.Reload()
 		mainWindow.Show()
+		go notifyIfConfigOutdated(manager, mainWindow)
+		go startPeriodicGitCheck(manager, mainWindow)
 		myApp.Run()
 	} else {
 		// Show password dialog
 		showPasswordDialog(myApp, manager, mainWindow)
 		myApp.Run()
 	}
+}
+
+// startPeriodicGitCheck re-checks the git status every 15 minutes and updates
+// the status bar label. No dialog is shown on periodic checks to avoid interrupting
+// the user; the label change is enough to signal that a pull is available.
+func startPeriodicGitCheck(manager *config.Manager, mainWindow *gui.MainWindow) {
+	ticker := time.NewTicker(15 * time.Minute)
+	for range ticker.C {
+		status := config.CheckConfigGitStatus(manager.GetConfigPath())
+		mainWindow.SetGitStatus(status)
+	}
+}
+
+func notifyIfConfigOutdated(manager *config.Manager, mainWindow *gui.MainWindow) {
+	status := config.CheckConfigGitStatus(manager.GetConfigPath())
+	mainWindow.SetGitStatus(status)
+
+	if status != config.GitStatusBehind {
+		return
+	}
+
+	msg := widget.NewLabel("The remote repository has newer commits.\nWould you like to pull the latest version of your config?")
+	msg.Wrapping = fyne.TextWrapWord
+
+	dialog.ShowCustomConfirm(
+		"Config out of date",
+		"Pull latest",
+		"Dismiss",
+		msg,
+		func(pull bool) {
+			if !pull {
+				return
+			}
+			go func() {
+				if err := config.PullConfig(manager.GetConfigPath()); err != nil {
+					dialog.ShowError(fmt.Errorf("git pull failed: %w", err), mainWindow.Window())
+					return
+				}
+				if err := manager.Load(); err != nil {
+					dialog.ShowError(fmt.Errorf("failed to reload config after pull: %w", err), mainWindow.Window())
+					return
+				}
+				mainWindow.Reload()
+				mainWindow.SetGitStatus(config.GitStatusUpToDate)
+			}()
+		},
+		mainWindow.Window(),
+	)
 }
 
 func showPasswordDialog(myApp fyne.App, manager *config.Manager, mainWindow *gui.MainWindow) {
@@ -133,6 +184,8 @@ func showPasswordDialog(myApp fyne.App, manager *config.Manager, mainWindow *gui
 		// Close the password window and show main window
 		w.Close()
 		mainWindow.Show()
+		go notifyIfConfigOutdated(manager, mainWindow)
+		go startPeriodicGitCheck(manager, mainWindow)
 	})
 	okButton.Importance = widget.HighImportance
 

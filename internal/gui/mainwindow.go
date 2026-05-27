@@ -28,10 +28,11 @@ type MainWindow struct {
 	searchEntry    *widget.Entry
 	allConnections []*models.Connection
 	filteredIDs    []string
-	statusLabel           *widget.Label
-	activeSessions        *widget.List
-	sessionList           []*models.Connection
-	detailsConnectBtn     *widget.Button
+	statusLabel            *widget.Label
+	gitStatusLabel         *widget.Label
+	activeSessions         *widget.List
+	sessionList            []*models.Connection
+	detailsConnectBtn      *widget.Button
 	detailsStatusContainer *fyne.Container
 }
 
@@ -48,6 +49,28 @@ func NewMainWindow(app fyne.App, manager *config.Manager) *MainWindow {
 	w.setupUI()
 	w.setupKeyboardShortcuts()
 	return w
+}
+
+// Window returns the underlying Fyne window.
+func (w *MainWindow) Window() fyne.Window {
+	return w.window
+}
+
+// ShowInfo displays a non-blocking information dialog on the main window.
+func (w *MainWindow) ShowInfo(title, message string) {
+	dialog.ShowInformation(title, message, w.window)
+}
+
+// SetGitStatus updates the git sync indicator in the status bar.
+func (w *MainWindow) SetGitStatus(status config.GitStatus) {
+	switch status {
+	case config.GitStatusUpToDate:
+		w.gitStatusLabel.SetText("✓ Config up to date")
+	case config.GitStatusBehind:
+		w.gitStatusLabel.SetText("↓ Config behind")
+	default:
+		w.gitStatusLabel.SetText("")
+	}
 }
 
 // setupKeyboardShortcuts sets up keyboard shortcuts
@@ -94,9 +117,8 @@ func (w *MainWindow) setupUI() {
 
 	// Create status bar
 	w.statusLabel = widget.NewLabel("Ready")
-	statusBar := container.NewHBox(
-		w.statusLabel,
-	)
+	w.gitStatusLabel = widget.NewLabel("")
+	statusBar := container.NewBorder(nil, nil, nil, w.gitStatusLabel, w.statusLabel)
 
 	// Main content with toolbar and status bar
 	content := container.NewBorder(
