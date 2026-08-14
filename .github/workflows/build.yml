@@ -2,11 +2,21 @@ name: Build Cross-Platform
 
 on:
   push:
+    branches: [ main ]  # Also keeps main's build cache warm — see below
     tags:
       - 'v*.*.*'  # Only trigger on version tags like v1.0.0
   pull_request:
     branches: [ main ]
   workflow_dispatch:  # Allow manual trigger
+
+# GitHub Actions caches (actions/setup-go's module+build cache here) are only
+# restorable from the exact same ref or the repository's default branch — a
+# newly-pushed release tag has never been built before, so with no build on
+# `main` it always started from a fully cold cache. Confirmed via timing: the
+# Windows build (the slowest by far, due to CGO compiling Fyne's OpenGL
+# bindings) took ~380-400s cold, but only ~35s once main's cache was warm.
+# Building on every push to main keeps that cache hot, so tag-triggered
+# release builds inherit it instead of starting cold every time.
 
 jobs:
   build:
