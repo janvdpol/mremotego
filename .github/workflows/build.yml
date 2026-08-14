@@ -65,9 +65,21 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev
 
-    - name: Install go-winres (Windows icon embedding)
+    - name: Cache go-winres binary
+      # go-winres itself never changes between builds, but "go install ...@latest"
+      # re-resolves and rebuilds it from source on every single run regardless
+      # (~40s wasted). Pinning the version and caching the compiled binary
+      # turns that into a one-time cost.
       if: matrix.os == 'windows-latest'
-      run: go install github.com/tc-hib/go-winres@latest
+      id: cache-go-winres
+      uses: actions/cache@v4
+      with:
+        path: ~/go/bin/go-winres.exe
+        key: go-winres-v0.3.3-windows-amd64
+
+    - name: Install go-winres (Windows icon embedding)
+      if: matrix.os == 'windows-latest' && steps.cache-go-winres.outputs.cache-hit != 'true'
+      run: go install github.com/tc-hib/go-winres@v0.3.3
 
     - name: Generate Windows resources
       if: matrix.os == 'windows-latest'
