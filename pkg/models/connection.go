@@ -41,6 +41,17 @@ type Connection struct {
 	Resolution             string `yaml:"resolution,omitempty"`               // For RDP
 	ExtraArgs              string `yaml:"extra_args,omitempty"`               // Additional protocol-specific args
 
+	// Local drive redirection (RDP only): maps local drives into the remote session,
+	// where Windows exposes them both as new volumes under "This PC" and as
+	// subdirectories under \\tsclient. Values:
+	//   ""         disabled
+	//   "*"        all drives present now, plus any connected later
+	//   "dynamic"  only drives connected after the session starts (e.g. USB)
+	//   "local"    all local fixed/removable drives present at launch time,
+	//              excluding network-mapped drives
+	//   otherwise  a comma-separated list of drive letters, e.g. "C,D"
+	RDPRedirectDrives string `yaml:"rdp_redirect_drives,omitempty"`
+
 	// RD Gateway options (RDP only)
 	UseGateway                bool   `yaml:"use_gateway,omitempty"`
 	GatewayUsageMethod        string `yaml:"gateway_usage_method,omitempty"` // "never", "always", "detect"
@@ -144,6 +155,7 @@ func (c *Connection) DeepCopy() *Connection {
 		ColorDepth:                c.ColorDepth,
 		Resolution:                c.Resolution,
 		ExtraArgs:                 c.ExtraArgs,
+		RDPRedirectDrives:         c.RDPRedirectDrives,
 		UseGateway:                c.UseGateway,
 		GatewayUsageMethod:        c.GatewayUsageMethod,
 		GatewayHostname:           c.GatewayHostname,

@@ -148,6 +148,37 @@ func deleteWindowsCredential(target string) error {
 	return nil
 }
 
+// driveTypeRemote is the GetDriveTypeW result for a network-mapped drive letter.
+const driveTypeRemote = 4
+
+// localFixedDriveLetters returns the letters (without colon) of every drive
+// currently present on this machine, excluding network-mapped (remote) drives.
+// Used to resolve the "local" RDPRedirectDrives spec at launch time.
+func localFixedDriveLetters() []string {
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	getLogicalDrives := kernel32.NewProc("GetLogicalDrives")
+	getDriveTypeW := kernel32.NewProc("GetDriveTypeW")
+
+	mask, _, _ := getLogicalDrives.Call()
+	var drives []string
+	for i := 0; i < 26; i++ {
+		if mask&(1<<uint(i)) == 0 {
+			continue
+		}
+		letter := string(rune('A' + i))
+		root, err := syscall.UTF16PtrFromString(letter + `:\`)
+		if err != nil {
+			continue
+		}
+		driveType, _, _ := getDriveTypeW.Call(uintptr(unsafe.Pointer(root)))
+		if driveType == driveTypeRemote {
+			continue // exclude network drives
+		}
+		drives = append(drives, letter)
+	}
+	return drives
+}
+
 // enumWindowsCB is created exactly once (syscall.NewCallback has a per-process limit of 1024).
 var (
 	enumWindowsOnce     sync.Once

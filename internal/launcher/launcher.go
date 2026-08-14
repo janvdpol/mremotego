@@ -656,6 +656,13 @@ func (l *Launcher) createRDPFile(conn *models.Connection, target string) (string
 	rdpContent += "redirectposdevices:i:0\r\n"
 	rdpContent += "autoreconnection enabled:i:1\r\n"
 
+	// Local drive redirection: makes local drives available inside the session,
+	// where Windows shows them both as new volumes under "This PC" and as
+	// subdirectories under \\tsclient.
+	if driveSpec := rdpDriveRedirectValue(conn.RDPRedirectDrives); driveSpec != "" {
+		rdpContent += fmt.Sprintf("drivestoredirect:s:%s\r\n", driveSpec)
+	}
+
 	// Authentication level: 0 = always connect, 1 = don't connect on failure, 2 = warn
 	authLevel := 0
 	switch conn.RDPAuthenticationLevel {
@@ -750,6 +757,49 @@ func (l *Launcher) createRDPFile(conn *models.Connection, target string) (string
 	}
 
 	return rdpPath, nil
+}
+
+// rdpDriveRedirectValue converts a Connection.RDPRedirectDrives spec into the
+// value expected by the .rdp file's "drivestoredirect" setting:
+//   "*"       all drives, including ones connected later — passed through unchanged
+//   "dynamic" only drives connected after the session starts — becomes "DynamicDrives"
+//   "local"   local fixed/removable drives present now, excluding network drives —
+//             resolved via localFixedDriveLetters() (Windows-only; empty elsewhere)
+//   otherwise a comma-separated list of drive letters like "C,D" becomes "C:;D:"
+// Returns "" when redirection is disabled or the spec has no usable drive letters.
+func rdpDriveRedirectValue(spec string) string {
+	spec = strings.TrimSpace(spec)
+	switch spec {
+	case "", "*":
+		return spec
+	case "dynamic":
+		return "DynamicDrives"
+	case "local":
+		drives := localFixedDriveLetters()
+		if len(drives) == 0 {
+			return ""
+		}
+		letters := make([]string, len(drives))
+		for i, d := range drives {
+			letters[i] = d + ":"
+		}
+		return strings.Join(letters, ";")
+	}
+
+	parts := strings.Split(spec, ",")
+	drives := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		p = strings.TrimSuffix(p, ":")
+		if p == "" {
+			continue
+		}
+		drives = append(drives, strings.ToUpper(p)+":")
+	}
+	if len(drives) == 0 {
+		return ""
+	}
+	return strings.Join(drives, ";")
 }
 
 // sanitizeFilename removes or replaces invalid characters from a filename

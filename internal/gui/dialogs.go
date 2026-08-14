@@ -188,6 +188,23 @@ func (w *MainWindow) showAddConnectionDialog() {
 	credSSPLabel.Hide()
 	useCredSSPCheck.Hide()
 
+	redirectDrivesCheck := widget.NewCheck("Redirect local drives", nil)
+	redirectDrivesLabel := widget.NewLabel("")
+	redirectDrivesLabel.Hide()
+	redirectDrivesCheck.Hide()
+
+	redirectDrivesModeSelect := widget.NewSelect([]string{"All drives", "All local disks only (no network drives)", "Dynamic drives", "Specific drives"}, nil)
+	redirectDrivesModeSelect.SetSelected("All drives")
+	redirectDrivesModeLabel := widget.NewLabelWithStyle("Drives to Redirect", fyne.TextAlignTrailing, fyne.TextStyle{})
+	redirectDrivesModeLabel.Hide()
+	redirectDrivesModeSelect.Hide()
+
+	redirectDrivesListEntry := widget.NewEntry()
+	redirectDrivesListEntry.SetPlaceHolder("e.g. C,D")
+	redirectDrivesListLabel := widget.NewLabelWithStyle("Drive Letters", fyne.TextAlignTrailing, fyne.TextStyle{})
+	redirectDrivesListLabel.Hide()
+	redirectDrivesListEntry.Hide()
+
 	// RD Gateway widgets
 	useGatewayCheck := widget.NewCheck("Use RD Gateway", nil)
 
@@ -308,6 +325,34 @@ func (w *MainWindow) showAddConnectionDialog() {
 		showGatewayDifferentCreds(selected == "Use a different username and password")
 	}
 
+	showRedirectDrivesList := func(show bool) {
+		if show {
+			redirectDrivesListLabel.Show()
+			redirectDrivesListEntry.Show()
+		} else {
+			redirectDrivesListLabel.Hide()
+			redirectDrivesListEntry.Hide()
+		}
+		formContainer.Refresh()
+	}
+
+	redirectDrivesModeSelect.OnChanged = func(selected string) {
+		showRedirectDrivesList(selected == "Specific drives")
+	}
+
+	redirectDrivesCheck.OnChanged = func(checked bool) {
+		if checked {
+			redirectDrivesModeLabel.Show()
+			redirectDrivesModeSelect.Show()
+			showRedirectDrivesList(redirectDrivesModeSelect.Selected == "Specific drives")
+		} else {
+			redirectDrivesModeLabel.Hide()
+			redirectDrivesModeSelect.Hide()
+			showRedirectDrivesList(false)
+		}
+		formContainer.Refresh()
+	}
+
 	useGatewayCheck.OnChanged = func(checked bool) {
 		if checked {
 			gatewayUsageLabel.Show()
@@ -350,6 +395,8 @@ func (w *MainWindow) showAddConnectionDialog() {
 			authLevelSelect.Show()
 			credSSPLabel.Show()
 			useCredSSPCheck.Show()
+			redirectDrivesLabel.Show()
+			redirectDrivesCheck.Show()
 		} else {
 			hideAllGatewayRows()
 			useGatewayCheck.SetChecked(false)
@@ -357,6 +404,13 @@ func (w *MainWindow) showAddConnectionDialog() {
 			authLevelSelect.Hide()
 			credSSPLabel.Hide()
 			useCredSSPCheck.Hide()
+			redirectDrivesLabel.Hide()
+			redirectDrivesCheck.Hide()
+			redirectDrivesCheck.SetChecked(false)
+			redirectDrivesModeLabel.Hide()
+			redirectDrivesModeSelect.Hide()
+			redirectDrivesListLabel.Hide()
+			redirectDrivesListEntry.Hide()
 		}
 		formContainer.Refresh()
 	}
@@ -374,6 +428,9 @@ func (w *MainWindow) showAddConnectionDialog() {
 		widget.NewLabelWithStyle("Folder", fyne.TextAlignTrailing, fyne.TextStyle{}), folderSelect,
 		authLevelLabel, authLevelSelect,
 		credSSPLabel, useCredSSPCheck,
+		redirectDrivesLabel, redirectDrivesCheck,
+		redirectDrivesModeLabel, redirectDrivesModeSelect,
+		redirectDrivesListLabel, redirectDrivesListEntry,
 		gatewayCheckLabel, useGatewayCheck,
 		gatewayUsageLabel, gatewayUsageSelect,
 		gatewayHostnameLabel, gatewayHostnameEntry,
@@ -412,6 +469,21 @@ func (w *MainWindow) showAddConnectionDialog() {
 				conn.RDPAuthenticationLevel = "warn"
 			default:
 				conn.RDPAuthenticationLevel = "always"
+			}
+
+			if redirectDrivesCheck.Checked {
+				switch redirectDrivesModeSelect.Selected {
+				case "Specific drives":
+					conn.RDPRedirectDrives = redirectDrivesListEntry.Text
+				case "All local disks only (no network drives)":
+					conn.RDPRedirectDrives = "local"
+				case "Dynamic drives":
+					conn.RDPRedirectDrives = "dynamic"
+				default:
+					conn.RDPRedirectDrives = "*"
+				}
+			} else {
+				conn.RDPRedirectDrives = ""
 			}
 		}
 
@@ -606,11 +678,48 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 	useCredSSPCheck.SetChecked(conn.UseCredSSP)
 	credSSPLabel := widget.NewLabel("")
 
+	redirectDrivesCheck := widget.NewCheck("Redirect local drives", nil)
+	redirectDrivesCheck.SetChecked(conn.RDPRedirectDrives != "")
+	redirectDrivesLabel := widget.NewLabel("")
+
+	redirectDrivesModeSelect := widget.NewSelect([]string{"All drives", "All local disks only (no network drives)", "Dynamic drives", "Specific drives"}, nil)
+	redirectDrivesModeLabel := widget.NewLabelWithStyle("Drives to Redirect", fyne.TextAlignTrailing, fyne.TextStyle{})
+
+	redirectDrivesListEntry := widget.NewEntry()
+	redirectDrivesListEntry.SetPlaceHolder("e.g. C,D")
+	redirectDrivesListLabel := widget.NewLabelWithStyle("Drive Letters", fyne.TextAlignTrailing, fyne.TextStyle{})
+
+	switch conn.RDPRedirectDrives {
+	case "", "*":
+		redirectDrivesModeSelect.SetSelected("All drives")
+	case "local":
+		redirectDrivesModeSelect.SetSelected("All local disks only (no network drives)")
+	case "dynamic":
+		redirectDrivesModeSelect.SetSelected("Dynamic drives")
+	default:
+		redirectDrivesModeSelect.SetSelected("Specific drives")
+		redirectDrivesListEntry.SetText(conn.RDPRedirectDrives)
+	}
+
 	if conn.Protocol != "rdp" {
 		authLevelLabel.Hide()
 		authLevelSelect.Hide()
 		credSSPLabel.Hide()
 		useCredSSPCheck.Hide()
+		redirectDrivesLabel.Hide()
+		redirectDrivesCheck.Hide()
+		redirectDrivesModeLabel.Hide()
+		redirectDrivesModeSelect.Hide()
+		redirectDrivesListLabel.Hide()
+		redirectDrivesListEntry.Hide()
+	} else if !redirectDrivesCheck.Checked {
+		redirectDrivesModeLabel.Hide()
+		redirectDrivesModeSelect.Hide()
+		redirectDrivesListLabel.Hide()
+		redirectDrivesListEntry.Hide()
+	} else if redirectDrivesModeSelect.Selected != "Specific drives" {
+		redirectDrivesListLabel.Hide()
+		redirectDrivesListEntry.Hide()
 	}
 
 	// RD Gateway widgets
@@ -775,6 +884,34 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 		showGatewayDifferentCreds(selected == "Use a different username and password")
 	}
 
+	showRedirectDrivesList := func(show bool) {
+		if show {
+			redirectDrivesListLabel.Show()
+			redirectDrivesListEntry.Show()
+		} else {
+			redirectDrivesListLabel.Hide()
+			redirectDrivesListEntry.Hide()
+		}
+		formContainer.Refresh()
+	}
+
+	redirectDrivesModeSelect.OnChanged = func(selected string) {
+		showRedirectDrivesList(selected == "Specific drives")
+	}
+
+	redirectDrivesCheck.OnChanged = func(checked bool) {
+		if checked {
+			redirectDrivesModeLabel.Show()
+			redirectDrivesModeSelect.Show()
+			showRedirectDrivesList(redirectDrivesModeSelect.Selected == "Specific drives")
+		} else {
+			redirectDrivesModeLabel.Hide()
+			redirectDrivesModeSelect.Hide()
+			showRedirectDrivesList(false)
+		}
+		formContainer.Refresh()
+	}
+
 	useGatewayCheck.OnChanged = func(checked bool) {
 		if checked {
 			gatewayUsageLabel.Show()
@@ -817,6 +954,8 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 			authLevelSelect.Show()
 			credSSPLabel.Show()
 			useCredSSPCheck.Show()
+			redirectDrivesLabel.Show()
+			redirectDrivesCheck.Show()
 		} else {
 			hideAllGatewayRows()
 			useGatewayCheck.SetChecked(false)
@@ -824,6 +963,13 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 			authLevelSelect.Hide()
 			credSSPLabel.Hide()
 			useCredSSPCheck.Hide()
+			redirectDrivesLabel.Hide()
+			redirectDrivesCheck.Hide()
+			redirectDrivesCheck.SetChecked(false)
+			redirectDrivesModeLabel.Hide()
+			redirectDrivesModeSelect.Hide()
+			redirectDrivesListLabel.Hide()
+			redirectDrivesListEntry.Hide()
 		}
 		formContainer.Refresh()
 	}
@@ -841,6 +987,9 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 		widget.NewLabelWithStyle("Folder", fyne.TextAlignTrailing, fyne.TextStyle{}), folderSelect,
 		authLevelLabel, authLevelSelect,
 		credSSPLabel, useCredSSPCheck,
+		redirectDrivesLabel, redirectDrivesCheck,
+		redirectDrivesModeLabel, redirectDrivesModeSelect,
+		redirectDrivesListLabel, redirectDrivesListEntry,
 		gatewayCheckLabel, useGatewayCheck,
 		gatewayUsageLabel, gatewayUsageSelect,
 		gatewayHostnameLabel, gatewayHostnameEntry,
@@ -891,6 +1040,21 @@ func (w *MainWindow) showEditConnectionDialog(conn *models.Connection) {
 				conn.RDPAuthenticationLevel = "warn"
 			default:
 				conn.RDPAuthenticationLevel = "always"
+			}
+
+			if redirectDrivesCheck.Checked {
+				switch redirectDrivesModeSelect.Selected {
+				case "Specific drives":
+					conn.RDPRedirectDrives = redirectDrivesListEntry.Text
+				case "All local disks only (no network drives)":
+					conn.RDPRedirectDrives = "local"
+				case "Dynamic drives":
+					conn.RDPRedirectDrives = "dynamic"
+				default:
+					conn.RDPRedirectDrives = "*"
+				}
+			} else {
+				conn.RDPRedirectDrives = ""
 			}
 		}
 

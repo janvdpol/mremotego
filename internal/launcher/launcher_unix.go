@@ -15,3 +15,4 @@ func writeWindowsCredential(target, username, password string) error { return ni
 func deleteWindowsCredential(target string) error                    { return nil }
 func waitForMstscConnected(pid int, hostname string, timeout time.Duration, exited <-chan struct{}) {}
 func cleanupOrphanedCredentials()                                    {}
+func localFixedDriveLetters() []string                               { return nil }

@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-08-14
+
+### Added
+- **RDP local drive redirection**: RDP connections can now map local drives into the remote session. Configurable via the new "Redirect local drives" option in the Add/Edit Connection dialogs, or the `rdp_redirect_drives` YAML field. Four modes are supported:
+  - **All drives** (`"*"`) — every local drive present now, plus any connected later
+  - **All local disks only (no network drives)** (`"local"`) — local fixed/removable drives present at launch time, resolved via `GetDriveTypeW` to exclude network-mapped drive letters
+  - **Dynamic drives** (`"dynamic"`) — only drives connected after the session starts (e.g. USB sticks), maps to the `.rdp` file's `DynamicDrives` token
+  - **Specific drives** (e.g. `"C,D"`) — an explicit comma-separated list of drive letters
+
+  Windows exposes redirected drives both as new volumes under "This PC" and as subdirectories under `\\tsclient`. Implemented via the `.rdp` file's `drivestoredirect` setting.
+
+### Fixed
+- **Startup crash from git status checking**: the background config-git-status check (added in 1.3.0) called Fyne widget and dialog methods directly from a goroutine instead of marshalling them onto the main UI thread via `fyne.Do`, which newer Fyne versions treat as a fatal thread-safety violation. Affected `notifyIfConfigOutdated`, `startPeriodicGitCheck`, and the "pull latest config" confirmation flow in `cmd/mremotego-gui/main.go`.
+
+## [1.3.0] - 2026-05-27
+
+### Added
+- **Git status checking for config updates**: on startup (and every 15 minutes thereafter), MremoteGo checks whether the config repository's local `HEAD` is behind its remote via `git ls-remote` (read-only, no fetch). A status indicator appears in the status bar, and if the config is behind, a dialog offers to `git pull` the latest version and reload it automatically.
+
 ## [1.2.0] - 2026-05-06
 
 ### Added
