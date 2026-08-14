@@ -48,11 +48,12 @@ type Release struct {
 }
 
 type ghRelease struct {
-	TagName string    `json:"tag_name"`
-	HTMLURL string    `json:"html_url"`
-	Body    string    `json:"body"`
-	Draft   bool      `json:"draft"`
-	Assets  []ghAsset `json:"assets"`
+	TagName    string    `json:"tag_name"`
+	HTMLURL    string    `json:"html_url"`
+	Body       string    `json:"body"`
+	Draft      bool      `json:"draft"`
+	Prerelease bool      `json:"prerelease"`
+	Assets     []ghAsset `json:"assets"`
 }
 
 type ghAsset struct {
@@ -60,15 +61,22 @@ type ghAsset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
-// CheckLatest queries GitHub for the most recently published release and
-// returns it if newer than currentVersion. It reports ok=false (with no
+// CheckLatest queries GitHub for the most recently published stable release
+// and returns it if newer than currentVersion. It reports ok=false (with no
 // error) when already up to date or when currentVersion is a local/dev build.
 //
-// Every release this project publishes is marked as a GitHub "prerelease"
-// (see .github/workflows/build.yml), so the /releases/latest endpoint —
-// which explicitly excludes prereleases — always 404s here. The release list
-// is queried instead, and the newest non-draft entry is treated as latest
-// (GitHub returns the list newest-first).
+// The release list is queried rather than /releases/latest (which excludes
+// prereleases and drafts itself) because the plain GitHub API client used
+// here has no reliable way to tell in advance whether that endpoint has ever
+// had a qualifying release to return — walking the list and applying the
+// same draft/prerelease filter ourselves behaves identically once one
+// exists, and degrades gracefully (a normal "no update" result) rather than
+// erroring while it doesn't. See .github/workflows/build.yml's "Determine
+// release type" step for what makes a release stable vs. prerelease: plain
+// tags (v1.6.0) are stable, tags with a semver pre-release identifier
+// (v2.0.0-alpha) are not and are skipped here — self-update only ever
+// offers the latest stable release, never a prerelease (GitHub returns the
+// list newest-first).
 func CheckLatest(currentVersion string) (rel *Release, ok bool, err error) {
 	currentVersion = strings.TrimPrefix(strings.TrimSpace(currentVersion), "v")
 	if currentVersion == "" || currentVersion == "dev" {
@@ -98,7 +106,7 @@ func CheckLatest(currentVersion string) (rel *Release, ok bool, err error) {
 	}
 
 	for _, r := range releases {
-		if r.Draft {
+		if r.Draft || r.Prerelease {
 			continue
 		}
 

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-08-14
+
+### Fixed
+- **Releases now publish as stable, not permanently pre-release**: `prerelease` was previously hardcoded to `true` for every release the workflow created, with nothing ever able to graduate it — this is the first release published as a real (non-prerelease) GitHub release. Going forward, a plain tag (`v1.6.1`) publishes as stable; a tag carrying a semver pre-release identifier (`v2.0.0-alpha`, `-beta`, `-rc1`) publishes as a pre-release.
+- **Self-update no longer offers pre-releases**: `internal/update.CheckLatest` now skips prerelease entries when picking "latest" (in addition to drafts), so an alpha/beta tag pushed in the future won't get auto-offered to everyone on the stable channel — only a plain, stable tag will. Releases 1.0.0 through 1.6.0 remain marked as pre-release on GitHub itself (a historical label, harmless — self-update simply treats this release as the first stable one to offer).
+
 ## [1.6.0] - 2026-08-14
 
 ### Added

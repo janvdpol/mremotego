@@ -152,12 +152,24 @@ jobs:
       id: version
       run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
+    - name: Determine release type
+      id: release_type
+      run: |
+        # Plain tags (v1.6.0) publish as a real release; tags carrying a
+        # semver pre-release identifier (v2.0.0-alpha, -beta, -rc1, ...)
+        # publish as a GitHub pre-release.
+        if [[ "${{ steps.version.outputs.VERSION }}" == *-* ]]; then
+          echo "prerelease=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "prerelease=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Create Release
       uses: softprops/action-gh-release@v3.0.0
       with:
         name: Release ${{ steps.version.outputs.VERSION }}
         draft: false
-        prerelease: true
+        prerelease: ${{ steps.release_type.outputs.prerelease }}
         generate_release_notes: true
         files: |
           artifacts/*.tar.gz
