@@ -140,6 +140,14 @@ jobs:
         done
         ls -lh
 
+    - name: Generate checksums
+      # Consumed by internal/update's self-updater to verify a downloaded
+      # archive before installing it (see verifyChecksum in update.go).
+      run: |
+        cd artifacts
+        sha256sum *.tar.gz *.zip > SHA256SUMS
+        cat SHA256SUMS
+
     - name: Extract version from tag
       id: version
       run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
@@ -154,5 +162,6 @@ jobs:
         files: |
           artifacts/*.tar.gz
           artifacts/*.zip
+          artifacts/SHA256SUMS
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

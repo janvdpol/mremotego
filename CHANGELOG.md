@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-08-14
+
+### Added
+- **Self-update integrity verification**: the release workflow now publishes a `SHA256SUMS` file alongside each platform archive, and the self-updater (introduced in 1.5.0) verifies a downloaded archive's SHA-256 against it before installing. This fails closed: a release with no `SHA256SUMS` asset, no matching entry for the current platform, or a hash mismatch is treated as a failed update and nothing is installed. Downloads were already served over GitHub's HTTPS, but self-updating bypasses the Mark-of-the-Web/SmartScreen check a manually-downloaded-and-extracted exe would normally get, so this restores an integrity check in its place.
+
 ## [1.5.0] - 2026-08-14
 
 ### Added

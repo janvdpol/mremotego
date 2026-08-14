@@ -46,3 +46,43 @@ func TestCheckLatestSkipsDevBuilds(t *testing.T) {
 		}
 	}
 }
+
+func TestFindChecksum(t *testing.T) {
+	listing := "aaaa111  linux-amd64.tar.gz\n" +
+		"bbbb222 *windows-amd64.zip\n" + // sha256sum binary-mode marker
+		"cccc333  darwin-arm64.tar.gz\n"
+
+	cases := []struct {
+		name    string
+		want    string
+		wantErr bool
+	}{
+		{"linux-amd64.tar.gz", "aaaa111", false},
+		{"windows-amd64.zip", "bbbb222", false}, // leading "*" stripped
+		{"darwin-arm64.tar.gz", "cccc333", false},
+		{"linux-arm64.tar.gz", "", true}, // not present
+	}
+	for _, c := range cases {
+		got, err := findChecksum(listing, c.name)
+		if c.wantErr {
+			if err == nil {
+				t.Errorf("findChecksum(%q) = %q, want error", c.name, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("findChecksum(%q) unexpected error: %v", c.name, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("findChecksum(%q) = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestVerifyChecksumFailsClosedWithoutURL(t *testing.T) {
+	err := verifyChecksum("irrelevant-path", &Release{TagName: "v1.6.0", AssetName: "linux-amd64.tar.gz"})
+	if err == nil {
+		t.Fatal("verifyChecksum with no ChecksumsURL should fail closed, got nil error")
+	}
+}

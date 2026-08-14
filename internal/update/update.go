@@ -7,6 +7,8 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -28,15 +30,21 @@ const (
 
 var releasesURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases?per_page=10", repoOwner, repoName)
 
+// checksumsAssetName is the release asset published alongside the platform
+// archives, listing each archive's SHA-256 in `sha256sum`-compatible format
+// (see the "Generate checksums" step in .github/workflows/build.yml).
+const checksumsAssetName = "SHA256SUMS"
+
 // Release describes a GitHub release that is newer than the running version
 // and has a downloadable archive for the current platform.
 type Release struct {
-	Version   string // e.g. "1.4.0" (no leading "v")
-	TagName   string // e.g. "v1.4.0"
-	HTMLURL   string
-	Notes     string
-	AssetURL  string
-	AssetName string
+	Version      string // e.g. "1.4.0" (no leading "v")
+	TagName      string // e.g. "v1.4.0"
+	HTMLURL      string
+	Notes        string
+	AssetURL     string
+	AssetName    string
+	ChecksumsURL string // browser_download_url for the release's SHA256SUMS file, or "" if absent
 }
 
 type ghRelease struct {
@@ -100,11 +108,13 @@ func CheckLatest(currentVersion string) (rel *Release, ok bool, err error) {
 		}
 
 		assetName := assetNameFor(runtime.GOOS, runtime.GOARCH)
-		var assetURL string
+		var assetURL, checksumsURL string
 		for _, a := range r.Assets {
-			if a.Name == assetName {
+			switch a.Name {
+			case assetName:
 				assetURL = a.BrowserDownloadURL
-				break
+			case checksumsAssetName:
+				checksumsURL = a.BrowserDownloadURL
 			}
 		}
 		if assetURL == "" {
@@ -112,12 +122,13 @@ func CheckLatest(currentVersion string) (rel *Release, ok bool, err error) {
 		}
 
 		return &Release{
-			Version:   latestVersion,
-			TagName:   r.TagName,
-			HTMLURL:   r.HTMLURL,
-			Notes:     r.Body,
-			AssetURL:  assetURL,
-			AssetName: assetName,
+			Version:      latestVersion,
+			TagName:      r.TagName,
+			HTMLURL:      r.HTMLURL,
+			Notes:        r.Body,
+			AssetURL:     assetURL,
+			AssetName:    assetName,
+			ChecksumsURL: checksumsURL,
 		}, true, nil
 	}
 
@@ -170,16 +181,21 @@ func leadingInt(s string) int {
 	return n
 }
 
-// Apply downloads rel's archive, extracts the executable, replaces the
-// currently running binary with it, and relaunches it. On success the
-// caller should exit the current process immediately — the app has already
-// continued running as the freshly spawned process.
+// Apply downloads rel's archive, verifies it against the release's published
+// SHA-256 checksum, extracts the executable, replaces the currently running
+// binary with it, and relaunches it. On success the caller should exit the
+// current process immediately — the app has already continued running as the
+// freshly spawned process.
 func Apply(rel *Release) error {
 	archivePath, err := download(rel.AssetURL, rel.AssetName)
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
 	defer os.Remove(archivePath)
+
+	if err := verifyChecksum(archivePath, rel); err != nil {
+		return fmt.Errorf("update verification failed, refusing to install: %w", err)
+	}
 
 	newExePath, err := extractExecutable(archivePath)
 	if err != nil {
@@ -236,6 +252,84 @@ func download(url, assetName string) (string, error) {
 		return "", err
 	}
 	return tmp.Name(), nil
+}
+
+// verifyChecksum fetches rel's SHA256SUMS asset and confirms archivePath's
+// SHA-256 matches the entry for rel.AssetName. It fails closed: a release
+// with no SHA256SUMS asset, no matching entry, or a mismatching hash is all
+// treated as verification failure.
+func verifyChecksum(archivePath string, rel *Release) error {
+	if rel.ChecksumsURL == "" {
+		return fmt.Errorf("release %s does not publish a %s file", rel.TagName, checksumsAssetName)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, rel.ChecksumsURL, nil)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("could not fetch %s: %w", checksumsAssetName, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("could not fetch %s: %s", checksumsAssetName, resp.Status)
+	}
+
+	listing, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	expected, err := findChecksum(string(listing), rel.AssetName)
+	if err != nil {
+		return err
+	}
+
+	actual, err := sha256File(archivePath)
+	if err != nil {
+		return fmt.Errorf("could not hash downloaded file: %w", err)
+	}
+
+	if !strings.EqualFold(actual, expected) {
+		return fmt.Errorf("checksum mismatch for %s: expected %s, got %s", rel.AssetName, expected, actual)
+	}
+	return nil
+}
+
+// findChecksum looks up name's hex digest in listing, a `sha256sum`-format
+// file (one "<hex>  <filename>" pair per line; sha256sum also allows a
+// leading "*" before the filename for binary mode, which is stripped).
+func findChecksum(listing, name string) (string, error) {
+	for _, line := range strings.Split(listing, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		hash, file := fields[0], strings.TrimPrefix(fields[1], "*")
+		if file == name {
+			return hash, nil
+		}
+	}
+	return "", fmt.Errorf("no checksum entry found for %s", name)
+}
+
+// sha256File returns the lowercase hex-encoded SHA-256 digest of path's contents.
+func sha256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // extractExecutable pulls the single file out of archivePath (a .zip or
