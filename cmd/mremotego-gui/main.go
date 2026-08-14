@@ -15,7 +15,14 @@ import (
 	"github.com/jaydenthorup/mremotego/internal/config"
 	"github.com/jaydenthorup/mremotego/internal/gui"
 	"github.com/jaydenthorup/mremotego/internal/launcher"
+	"github.com/jaydenthorup/mremotego/internal/update"
 )
+
+// version is set at build time via -ldflags "-X main.version=1.4.0" (see
+// Makefile, build-gui.ps1, and .github/workflows/build.yml). Local `go build`/
+// `go run` invocations that don't set it fall back to "dev", which disables
+// self-update checks (see update.CheckLatest).
+var version = "dev"
 
 func main() {
 	// If command-line arguments are provided (other than just the program name),
@@ -31,6 +38,7 @@ func main() {
 
 func runGUI() {
 	launcher.CleanupOnStartup()
+	go update.CleanupOnStartup() // retries for a while; must not block startup
 
 	// Set locale to avoid warnings on non-standard systems
 	if os.Getenv("LANG") == "" || os.Getenv("LANG") == "C" {
@@ -57,7 +65,7 @@ func runGUI() {
 	manager := config.NewManager(cfgPath)
 
 	// Create the main window first but don't show it yet
-	mainWindow := gui.NewMainWindow(myApp, manager)
+	mainWindow := gui.NewMainWindow(myApp, manager, version)
 
 	// Check if config exists and if it has encrypted passwords
 	_, statErr := os.Stat(cfgPath)
@@ -82,12 +90,23 @@ func runGUI() {
 		mainWindow.Show()
 		go notifyIfConfigOutdated(manager, mainWindow)
 		go startPeriodicGitCheck(manager, mainWindow)
+		go checkForUpdatesOnStartup(mainWindow)
 		myApp.Run()
 	} else {
 		// Show password dialog
 		showPasswordDialog(myApp, manager, mainWindow)
 		myApp.Run()
 	}
+}
+
+// checkForUpdatesOnStartup silently checks for a newer release a few seconds
+// after launch (giving the config-outdated dialog, if any, a chance to appear
+// first so the two don't compete for the user's attention). A dialog is only
+// shown when an update is actually available — network errors or already
+// being up to date stay silent so the check never nags at startup.
+func checkForUpdatesOnStartup(mainWindow *gui.MainWindow) {
+	time.Sleep(5 * time.Second)
+	mainWindow.CheckForUpdates(false)
 }
 
 // startPeriodicGitCheck re-checks the git status every 15 minutes and updates
@@ -200,6 +219,7 @@ func showPasswordDialog(myApp fyne.App, manager *config.Manager, mainWindow *gui
 		mainWindow.Show()
 		go notifyIfConfigOutdated(manager, mainWindow)
 		go startPeriodicGitCheck(manager, mainWindow)
+		go checkForUpdatesOnStartup(mainWindow)
 	})
 	okButton.Importance = widget.HighImportance
 

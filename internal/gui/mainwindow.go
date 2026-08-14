@@ -21,6 +21,7 @@ type MainWindow struct {
 	window         fyne.Window
 	manager        *config.Manager
 	launcher       *launcher.Launcher
+	version        string
 	tree           *widget.Tree
 	detailsCard    *widget.Card
 	selectedConn   *models.Connection
@@ -36,13 +37,16 @@ type MainWindow struct {
 	detailsStatusContainer *fyne.Container
 }
 
-// NewMainWindow creates a new main window
-func NewMainWindow(app fyne.App, manager *config.Manager) *MainWindow {
+// NewMainWindow creates a new main window. version is the running build's
+// version string (e.g. "1.4.0", or "dev" for local builds), used for the
+// About dialog and self-update checks.
+func NewMainWindow(app fyne.App, manager *config.Manager, version string) *MainWindow {
 	w := &MainWindow{
 		app:            app,
 		window:         app.NewWindow("MremoteGO - Remote Connection Manager"),
 		manager:        manager,
 		launcher:       launcher.NewLauncher(),
+		version:        version,
 		connectionData: make(map[string]*models.Connection),
 	}
 
@@ -158,6 +162,7 @@ func (w *MainWindow) setupMenuBar() {
 	)
 
 	helpMenu := fyne.NewMenu("Help",
+		fyne.NewMenuItem("Check for Updates...", func() { go w.CheckForUpdates(true) }),
 		fyne.NewMenuItem("About", func() { w.showAbout() }),
 	)
 
@@ -608,19 +613,27 @@ func (w *MainWindow) exportConfig() {
 }
 
 func (w *MainWindow) showAbout() {
+	version := w.version
+	if version == "" {
+		version = "dev"
+	}
 	dialog.ShowInformation("About MremoteGO",
-		"MremoteGO v1.0\n\nA Git-compatible remote connection manager\n\n"+
-			"Built with Go and Fyne\n\n"+
-			"© 2026 Your Name",
+		fmt.Sprintf("MremoteGO %s\n\nA Git-compatible remote connection manager\n\n"+
+			"Built with Go and Fyne", version),
 		w.window)
+}
+
+// Quit performs the same cleanup as closing the window, then exits the app.
+// Exported so the self-update flow can call it after relaunching into a new
+// version.
+func (w *MainWindow) Quit() {
+	w.launcher.Cleanup()
+	w.app.Quit()
 }
 
 // Show displays the main window
 func (w *MainWindow) Show() {
-	w.window.SetCloseIntercept(func() {
-		w.launcher.Cleanup()
-		w.app.Quit()
-	})
+	w.window.SetCloseIntercept(w.Quit)
 	w.window.Show()
 
 	// Check 1Password CLI authentication status after window is shown

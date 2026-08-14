@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-08-14
+
+### Added
+- **Self-update**: MremoteGO now checks GitHub Releases for a newer version — silently a few seconds after startup (only interrupting the user when an update is actually found), and on demand via the new "Check for Updates..." item in the Help menu. When available, a dialog shows the release notes and lets the user confirm before it downloads the matching platform archive, replaces the running executable, and relaunches automatically. Supported on Windows, Linux, and macOS:
+  - Windows: the running exe is renamed aside (`<exe>.old`) before the new one is moved into place, since Windows allows renaming but not overwriting a running executable; the leftover is cleaned up shortly after the next startup.
+  - Linux/macOS: the executable's directory entry is replaced directly — safe because the already-running process keeps executing off its existing (now-unlinked) file handle.
+  - All releases from this project are published as GitHub prereleases, so the update check queries the release list rather than the `/releases/latest` endpoint (which excludes prereleases and always 404s here).
+  - The running version is now embedded into the binary at build time (`-X main.version=...`, wired through `Makefile`, `build-gui.ps1`, and the CI release workflow) and shown in the About dialog, which previously hardcoded "v1.0".
+
 ## [1.4.0] - 2026-08-14
 
 ### Added

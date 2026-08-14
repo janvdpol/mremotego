@@ -62,26 +62,39 @@ jobs:
       working-directory: cmd/mremotego-gui
       run: go-winres simply --icon Icon.png --arch amd64
 
+    - name: Determine version
+      id: version
+      shell: bash
+      run: |
+        # Embedded into the binary for the About dialog and self-update checks
+        # (see cmd/mremotego-gui/main.go). Only tag pushes get a real version —
+        # PR/workflow_dispatch builds stay "dev", which disables update checks.
+        if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+          echo "value=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+        else
+          echo "value=dev" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Build (Windows)
       if: matrix.os == 'windows-latest'
       env:
         CGO_ENABLED: 1
       run: |
-        go build -ldflags "-s -H windowsgui" -o ${{ matrix.name }} ./cmd/mremotego-gui
+        go build -ldflags "-s -H windowsgui -X main.version=${{ steps.version.outputs.value }}" -o ${{ matrix.name }} ./cmd/mremotego-gui
 
     - name: Build (Linux)
       if: matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm'
       env:
         CGO_ENABLED: 1
       run: |
-        go build -ldflags "-s" -o ${{ matrix.name }} ./cmd/mremotego-gui
+        go build -ldflags "-s -X main.version=${{ steps.version.outputs.value }}" -o ${{ matrix.name }} ./cmd/mremotego-gui
 
     - name: Build (macOS)
       if: startsWith(matrix.os, 'macos')
       env:
         CGO_ENABLED: 1
       run: |
-        go build -o ${{ matrix.name }} ./cmd/mremotego-gui
+        go build -ldflags "-X main.version=${{ steps.version.outputs.value }}" -o ${{ matrix.name }} ./cmd/mremotego-gui
 
     - name: Upload artifact
       uses: actions/upload-artifact@v7.0.1

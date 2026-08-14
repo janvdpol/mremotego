@@ -21,13 +21,22 @@ if ($IsWindows -or $env:OS -match "Windows") {
     }
 }
 
+# Version embedded into the binary for the About dialog and self-update checks
+# (see cmd/mremotego-gui/main.go). Falls back to "dev" outside a git checkout
+# or when no tag is reachable, which disables update checks.
+$version = (git describe --tags --always --dirty 2>$null) -replace '^v', ''
+if ([string]::IsNullOrWhiteSpace($version)) {
+    $version = "dev"
+}
+Write-Host "Version: $version" -ForegroundColor Cyan
+
 # Build from the package path (not individual files) so the .syso is included.
 # Using -H windowsgui to hide console window on Windows
 if ($IsWindows -or $env:OS -match "Windows") {
-    go build -ldflags "-H windowsgui" -o mremotego.exe ./cmd/mremotego-gui/
+    go build -ldflags "-H windowsgui -X main.version=$version" -o mremotego.exe ./cmd/mremotego-gui/
     $outputFile = "mremotego.exe"
 } else {
-    go build -o mremotego ./cmd/mremotego-gui/
+    go build -ldflags "-X main.version=$version" -o mremotego ./cmd/mremotego-gui/
     $outputFile = "mremotego"
 }
 

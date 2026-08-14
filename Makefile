@@ -11,6 +11,15 @@ GUI_PATH=cmd/mremotego-gui/main.go cmd/mremotego-gui/theme.go
 # Build directory
 BUILD_DIR=bin
 
+# Version embedded into the GUI binary for the About dialog and self-update
+# checks (see cmd/mremotego-gui/main.go). Falls back to "dev" outside a git
+# checkout or when no tag is reachable, which disables update checks.
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//')
+ifeq ($(VERSION),)
+VERSION := dev
+endif
+VERSION_LDFLAGS := -X main.version=$(VERSION)
+
 all: clean build
 
 # Build both CLI and GUI
@@ -24,8 +33,8 @@ build-cli:
 
 # Build the GUI application
 build-gui:
-	@echo "Building $(GUI_BINARY)..."
-	@go build -ldflags="-H windowsgui" -o $(BUILD_DIR)/$(GUI_BINARY) $(GUI_PATH)
+	@echo "Building $(GUI_BINARY) ($(VERSION))..."
+	@go build -ldflags="-H windowsgui $(VERSION_LDFLAGS)" -o $(BUILD_DIR)/$(GUI_BINARY) $(GUI_PATH)
 	@echo "✓ GUI build complete: $(BUILD_DIR)/$(GUI_BINARY)"
 
 # Build for multiple platforms
@@ -36,11 +45,11 @@ build-all:
 	@GOOS=darwin GOARCH=arm64 go build -o $(BUILD_DIR)/$(CLI_BINARY)-darwin-arm64 $(CLI_PATH)
 	@GOOS=windows GOARCH=amd64 go build -o $(BUILD_DIR)/$(CLI_BINARY)-windows-amd64.exe $(CLI_PATH)
 	@echo "✓ CLI multi-platform build complete"
-	@echo "Building GUI for multiple platforms..."
-	@GOOS=linux GOARCH=amd64 go build -o $(BUILD_DIR)/$(GUI_BINARY)-linux-amd64 $(GUI_PATH)
-	@GOOS=darwin GOARCH=amd64 go build -o $(BUILD_DIR)/$(GUI_BINARY)-darwin-amd64 $(GUI_PATH)
-	@GOOS=darwin GOARCH=arm64 go build -o $(BUILD_DIR)/$(GUI_BINARY)-darwin-arm64 $(GUI_PATH)
-	@GOOS=windows GOARCH=amd64 go build -ldflags="-H windowsgui" -o $(BUILD_DIR)/$(GUI_BINARY)-windows-amd64.exe $(GUI_PATH)
+	@echo "Building GUI for multiple platforms ($(VERSION))..."
+	@GOOS=linux GOARCH=amd64 go build -ldflags="$(VERSION_LDFLAGS)" -o $(BUILD_DIR)/$(GUI_BINARY)-linux-amd64 $(GUI_PATH)
+	@GOOS=darwin GOARCH=amd64 go build -ldflags="$(VERSION_LDFLAGS)" -o $(BUILD_DIR)/$(GUI_BINARY)-darwin-amd64 $(GUI_PATH)
+	@GOOS=darwin GOARCH=arm64 go build -ldflags="$(VERSION_LDFLAGS)" -o $(BUILD_DIR)/$(GUI_BINARY)-darwin-arm64 $(GUI_PATH)
+	@GOOS=windows GOARCH=amd64 go build -ldflags="-H windowsgui $(VERSION_LDFLAGS)" -o $(BUILD_DIR)/$(GUI_BINARY)-windows-amd64.exe $(GUI_PATH)
 	@echo "✓ GUI multi-platform build complete"
 
 # Clean build artifacts
