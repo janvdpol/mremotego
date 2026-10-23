@@ -347,6 +347,23 @@ func (w *MainWindow) createDetailsPanel() *fyne.Container {
 	)
 }
 
+// titleTheme enlarges text to match a card title
+type titleTheme struct{ fyne.Theme }
+
+func (t titleTheme) Size(name fyne.ThemeSizeName) float32 {
+	if name == theme.SizeNameText {
+		return t.Theme.Size(theme.SizeNameSubHeadingText)
+	}
+	return t.Theme.Size(name)
+}
+
+// selectableLabel returns a label whose text can be selected and copied
+func selectableLabel(text string) *widget.Label {
+	l := widget.NewLabel(text)
+	l.Selectable = true
+	return l
+}
+
 // updateDetailsPanel updates the details panel with connection info
 func (w *MainWindow) updateDetailsPanel(conn *models.Connection) {
 	if conn.IsFolder() {
@@ -358,11 +375,18 @@ func (w *MainWindow) updateDetailsPanel(conn *models.Connection) {
 	}
 
 	icon := w.getConnectionIcon(conn)
-	w.detailsCard.SetTitle(icon + " " + conn.Name)
-	w.detailsCard.SetSubTitle(string(conn.Protocol))
+	// Card titles are not selectable, so show the name as a selectable label instead
+	w.detailsCard.SetTitle("")
+	w.detailsCard.SetSubTitle("")
+
+	nameLabel := selectableLabel(icon + " " + conn.Name)
+	nameLabel.TextStyle = fyne.TextStyle{Bold: true}
+	protocolLabel := widget.NewLabel(string(conn.Protocol))
 
 	details := container.NewVBox(
-		widget.NewLabel("Host: "+conn.Host),
+		container.NewThemeOverride(nameLabel, titleTheme{theme.Current()}),
+		protocolLabel,
+		selectableLabel("Host: "+conn.Host),
 		widget.NewLabel(fmt.Sprintf("Port: %d", conn.Port)),
 	)
 
