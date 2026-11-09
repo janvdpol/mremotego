@@ -112,7 +112,11 @@ See [docs/1PASSWORD-SETUP.md](docs/1PASSWORD-SETUP.md) for details.
 ### RDP
 - **Windows**: mstsc with Credential Manager
 - **Linux**: xfreerdp
-- **Auto-login**: ✅ Seamless
+- **macOS**: sdl-freerdp when installed (`brew install freerdp`), otherwise Windows App / Microsoft Remote Desktop
+  - With sdl-freerdp the 1Password credentials are passed in automatically (via stdin, not visible in `ps`)
+  - With Windows App the password is put on the clipboard for 45 seconds; paste it with Cmd+V when asked
+  - Force a client with `MREMOTEGO_MAC_RDP_CLIENT=freerdp` or `MREMOTEGO_MAC_RDP_CLIENT=windowsapp`
+- **Auto-login**: ✅ Seamless (Windows, Linux, macOS with sdl-freerdp)
 
 ### VNC
 - Uses vncviewer
