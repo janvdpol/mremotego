@@ -52,6 +52,9 @@ func NewMainWindow(app fyne.App, manager *config.Manager, version string) *MainW
 
 	w.setupUI()
 	w.setupKeyboardShortcuts()
+	w.launcher.Notify = func(message string) {
+		fyne.Do(func() { w.statusLabel.SetText(message) })
+	}
 	return w
 }
 

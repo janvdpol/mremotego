@@ -22,6 +22,23 @@ type Launcher struct {
 	mu       sync.Mutex
 	cleanups map[uint64]func()
 	nextID   uint64
+
+	// Notify, if set, receives short user-facing status messages from a launch
+	// (for example that a password was put on the clipboard). It may be called
+	// from any goroutine. When nil, messages are printed to stdout.
+	Notify func(message string)
+}
+
+// macClipboardClearDelay is how long an RDP password stays on the macOS
+// clipboard before it is removed again.
+const macClipboardClearDelay = 45 * time.Second
+
+func (l *Launcher) notify(message string) {
+	if l.Notify != nil {
+		l.Notify(message)
+		return
+	}
+	fmt.Println(message)
 }
 
 // NewLauncher creates a new launcher
@@ -459,17 +476,42 @@ func (l *Launcher) launchRDP(conn *models.Connection) error {
 		// for it, so no app name is hardcoded. An rdp://user@host URL is not a valid URI for
 		// that client and is rejected with "The URL is not valid"; the .rdp file
 		// also carries port, domain, gateway and drive redirection settings.
-		// The password cannot be passed this way: the client prompts for it or
-		// uses credentials saved in its own keychain entry.
+		// The password cannot be passed this way (the Mac clients ignore it in
+		// .rdp files), so it is put on the clipboard for the user to paste into
+		// the client's password prompt, and removed again after a short delay.
+		// A separate gateway password ("different" credentials) is not handed off.
 		rdpFile, err := l.createRDPFile(conn, target)
 		if err != nil {
 			return fmt.Errorf("failed to create RDP file: %w", err)
 		}
 
+		var clearClipboard func()
+		if conn.Password != "" {
+			clearClipboard, err = copySecretToClipboard(conn.Password)
+			if err != nil {
+				l.notify(fmt.Sprintf("Could not copy the password to the clipboard: %v", err))
+				clearClipboard = nil
+			}
+		}
+
 		open := exec.Command("open", rdpFile)
 		if err := open.Run(); err != nil {
 			_ = os.Remove(rdpFile)
+			if clearClipboard != nil {
+				clearClipboard()
+			}
 			return fmt.Errorf("failed to open RDP file (is Windows App or Microsoft Remote Desktop installed?): %w", err)
+		}
+
+		if clearClipboard != nil {
+			unregisterClip := l.registerCleanup(clearClipboard)
+			time.AfterFunc(macClipboardClearDelay, func() {
+				unregisterClip()
+				clearClipboard()
+				l.notify("Password removed from the clipboard")
+			})
+			l.notify(fmt.Sprintf("Password for %s copied to the clipboard; paste it (Cmd+V) when asked. It is removed in %d seconds",
+				conn.Name, int(macClipboardClearDelay.Seconds())))
 		}
 
 		// 'open' returns once the file is handed off, but the client reads it
