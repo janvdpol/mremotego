@@ -45,6 +45,8 @@ The GUI binary hides the console window on Windows via `-ldflags "-H windowsgui"
 - **`internal/crypto/`** — AES-256-GCM encryption with PBKDF2 (100k iterations). Encrypted passwords are stored as `enc:<base64(salt+nonce+ciphertext)>`.
 - **`internal/secrets/`** — Wraps the `op` CLI (1Password). Passwords prefixed `op://` are resolved at launch time via subprocess. Platform split: `_windows.go` / `_unix.go` for console-hiding.
 - **`internal/launcher/`** — Protocol launchers. Platform split: `launcher_windows.go` handles RDP (via `mstsc`) and WinRM; `launcher_unix.go` handles SSH/VNC/browser via `xdg-open` and `xterm`. Add new protocol support here.
+  - macOS RDP (`case "darwin"` in `launchRDP`): `sdl-freerdp` when installed (`freerdp.go`, all args incl. passwords via `/args-from:stdin`), otherwise Windows App via a temporary `.rdp` file plus the password on the clipboard (`clipboard_darwin.go`, cleared after 45 s). `MREMOTEGO_MAC_RDP_CLIENT=freerdp|windowsapp` forces a client.
+  - `Launcher.Notify` carries status messages (e.g. "password copied") to the GUI status bar.
 - **`internal/gui/`** — Fyne UI: `mainwindow.go` (layout, toolbar), `treewidget.go` (connection tree), `dialogs.go` (add/edit/delete/gateway dialogs).
 
 ### Config file location

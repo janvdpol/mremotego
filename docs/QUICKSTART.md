@@ -166,7 +166,8 @@ Install PuTTY: `winget install PuTTY.PuTTY`
 Install CLI: `winget install 1Password.CLI`
 
 ### RDP asks for password
-First connection stores credentials. Should auto-login after that.
+- **Windows**: first connection stores credentials. Should auto-login after that.
+- **macOS**: Windows App can't take the password; install FreeRDP (`brew install freerdp`) for auto-login, or paste the password from the clipboard (Cmd+V).
 
 ### Config file not found
 Default: `%APPDATA%\mremotego\config.yaml`

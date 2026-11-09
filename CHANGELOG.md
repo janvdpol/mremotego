@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **macOS RDP auto-login via FreeRDP**: when FreeRDP's SDL client (`sdl-freerdp`, `brew install freerdp`) is installed, macOS RDP connections use it instead of Windows App. Credentials from 1Password are passed in automatically. All arguments, passwords included, go through `/args-from:stdin`, so they never appear in `ps`. MremoteGO looks for the client in PATH and in the Homebrew/MacPorts directories, so it is also found when started from Finder. Connection settings are mapped to FreeRDP options: gateway, certificate level, NLA, drive redirection, resolution and colour depth. Connections whose RD Gateway uses smartcard authentication keep using Windows App. `MREMOTEGO_MAC_RDP_CLIENT=freerdp|windowsapp` forces a client.
+
+## [1.7.3] - 2026-11-09
+
+### Fixed
+- **macOS build**: CI now builds on the `macos-26` runner, because `macos-14` was retired ("The configuration 'macos-14-arm64-us-default' is not supported"). `MACOSX_DEPLOYMENT_TARGET=12.0` keeps the binary runnable on older macOS versions.
+
+## [1.7.2] - 2026-11-09
+
+### Added
+- **macOS RDP password via the clipboard**: Windows App and Microsoft Remote Desktop ignore passwords in `.rdp` files, so the password (from 1Password) is put on the clipboard to paste into the client's prompt. It is marked Concealed/Transient so clipboard managers skip it, and it is removed after 45 seconds or when MremoteGO closes. The status bar says when the password is ready.
+
+## [1.7.1] - 2026-11-09
+
+### Fixed
+- **macOS RDP "The URL is not valid"**: RDP on macOS opened an `rdp://user@domain@host` URL that Windows App rejects. It now opens a temporary `.rdp` file with the default handler, so port, domain, gateway and drive settings also carry over.
+
 ## [1.6.1] - 2026-08-14
 
 ### Fixed

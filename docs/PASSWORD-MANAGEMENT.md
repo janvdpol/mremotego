@@ -57,7 +57,7 @@ connections:
 
 ## RDP Auto-Login
 
-MremoteGO uses **Windows Credential Manager** for seamless RDP connections.
+On Windows, MremoteGO uses **Windows Credential Manager** for seamless RDP connections. For macOS, see [macOS](#macos) below.
 
 ### How It Works
 
@@ -99,6 +99,12 @@ cmdkey /list | Select-String "TERMSRV" | ForEach-Object {
   cmdkey /delete:$target
 }
 ```
+
+### macOS
+
+- **sdl-freerdp** (preferred, used automatically when installed with `brew install freerdp`): username, domain and password, gateway credentials included, are passed with `/args-from:stdin`. They never appear on the command line or in `ps`, and nothing is written to disk.
+- **Windows App / Microsoft Remote Desktop** (fallback when FreeRDP is not installed): these clients ignore passwords in `.rdp` files. MremoteGO opens a temporary `.rdp` file and puts the password on the clipboard, marked so clipboard managers don't record it. It is removed after 45 seconds, unless something else was copied in the meantime. A separate RD Gateway password is not handed off.
+- Force a client with `MREMOTEGO_MAC_RDP_CLIENT=freerdp` or `MREMOTEGO_MAC_RDP_CLIENT=windowsapp`.
 
 ## SSH Password Handling
 
@@ -209,3 +215,4 @@ password: mypassword123
 - Use 1Password to minimize exposure
 - Passwords are only visible briefly during connection
 - Windows Credential Manager used for RDP (not in process list)
+- macOS with sdl-freerdp: credentials go through stdin (not in process list)
