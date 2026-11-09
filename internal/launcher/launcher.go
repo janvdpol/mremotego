@@ -454,25 +454,34 @@ func (l *Launcher) launchRDP(conn *models.Connection) error {
 		return nil
 
 	case "darwin":
-		// Use Microsoft Remote Desktop on macOS
-		// Format: rdp://[username@]hostname[:port]
-		rdpURL := "rdp://"
-		if conn.Username != "" {
-			rdpURL += conn.Username
-			if conn.Domain != "" {
-				rdpURL += "@" + conn.Domain
-			}
-			rdpURL += "@"
-		}
-		rdpURL += conn.Host
-		if port != 3389 {
-			rdpURL += fmt.Sprintf(":%d", port)
+		// Hand a temporary .rdp file to whichever app is the default .rdp handler:
+		// Windows App or its predecessor Microsoft Remote Desktop, both register
+		// for it, so no app name is hardcoded. An rdp://user@host URL is not a valid URI for
+		// that client and is rejected with "The URL is not valid"; the .rdp file
+		// also carries port, domain, gateway and drive redirection settings.
+		// The password cannot be passed this way: the client prompts for it or
+		// uses credentials saved in its own keychain entry.
+		rdpFile, err := l.createRDPFile(conn, target)
+		if err != nil {
+			return fmt.Errorf("failed to create RDP file: %w", err)
 		}
 
-		// Use 'open' to launch Microsoft Remote Desktop with rdp:// URL
-		cmd = exec.Command("open", rdpURL)
-		// Note: Password cannot be passed via URL for security reasons
-		// Microsoft Remote Desktop will prompt or use saved credentials
+		open := exec.Command("open", rdpFile)
+		if err := open.Run(); err != nil {
+			_ = os.Remove(rdpFile)
+			return fmt.Errorf("failed to open RDP file (is Windows App or Microsoft Remote Desktop installed?): %w", err)
+		}
+
+		// 'open' returns once the file is handed off, but the client reads it
+		// asynchronously, so remove it after a grace period (or on app exit).
+		cleanup := func() { _ = os.Remove(rdpFile) }
+		unregister := l.registerCleanup(cleanup)
+		time.AfterFunc(60*time.Second, func() {
+			unregister()
+			cleanup()
+		})
+
+		return nil
 
 	case "linux":
 		// Use xfreerdp on Linux
